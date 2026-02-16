@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.kotlin.android)
@@ -16,6 +18,21 @@ android {
     versionName = "1.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+    val keyFile = rootProject.file("secret.properties")
+    val fallbackFile = rootProject.file("local.properties")
+    val props = Properties()
+    when {
+      keyFile.exists() -> keyFile.inputStream().use { props.load(it) }
+      fallbackFile.exists() -> fallbackFile.inputStream().use { props.load(it) }
+    }
+    var apiKey = props.getProperty("OPENAI_API_KEY", "").trim()
+    if (apiKey == "ваш ключ" || apiKey == "your_key" || apiKey.isEmpty()) apiKey = ""
+    buildConfigField("String", "OPENAI_API_KEY", "\"$apiKey\"")
+  }
+  buildFeatures {
+    compose = true
+    buildConfig = true
   }
 
   buildTypes {
@@ -31,9 +48,6 @@ android {
   kotlinOptions {
     jvmTarget = "11"
   }
-  buildFeatures {
-    compose = true
-  }
 }
 
 dependencies {
@@ -46,6 +60,13 @@ dependencies {
   implementation(libs.androidx.ui.graphics)
   implementation(libs.androidx.ui.tooling.preview)
   implementation(libs.androidx.material3)
+  implementation(libs.androidx.lifecycle.viewmodel.compose)
+  implementation(libs.retrofit)
+  implementation(libs.retrofit.gson)
+  implementation(libs.okhttp)
+  implementation(libs.okhttp.logging)
+  implementation(libs.gson)
+  implementation(libs.kotlinx.coroutines.android)
   testImplementation(libs.junit)
   androidTestImplementation(libs.androidx.junit)
   androidTestImplementation(libs.androidx.espresso.core)
