@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -22,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.aiadventchallenge.data.STOP_SEQUENCE
 
 @Composable
 fun ChatScreen(
@@ -52,6 +54,40 @@ fun ChatScreen(
       maxLines = 4,
       enabled = !uiState.isLoading
     )
+
+    Text(
+      text = "Настройки запроса",
+      style = MaterialTheme.typography.titleSmall
+    )
+
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+      OutlinedTextField(
+        value = if (uiState.unlimitedTokens) "" else uiState.maxTokensInput,
+        onValueChange = viewModel::updateMaxTokens,
+        modifier = Modifier.weight(1f),
+        label = { Text("Макс. токенов") },
+        placeholder = { Text("256") },
+        enabled = !uiState.isLoading && !uiState.unlimitedTokens,
+        singleLine = true
+      )
+      Row(
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Checkbox(
+          checked = uiState.unlimitedTokens,
+          onCheckedChange = viewModel::setUnlimitedTokens,
+          enabled = !uiState.isLoading
+        )
+        Text(
+          text = "Без ограничения",
+          style = MaterialTheme.typography.bodyMedium
+        )
+      }
+    }
 
     if (uiState.isLoading) {
       Row(
@@ -85,6 +121,34 @@ fun ChatScreen(
       maxLines = 20,
       placeholder = { Text("Ответ от ChatGPT появится здесь") }
     )
+
+    if (uiState.totalTokens != null || uiState.finishReason != null) {
+      val parts = buildList<String> {
+        if (uiState.promptTokens != null || uiState.completionTokens != null || uiState.totalTokens != null) {
+          add(
+            "Токенов: " + listOfNotNull(
+              uiState.promptTokens?.let { "запрос $it" },
+              uiState.completionTokens?.let { "ответ $it" },
+              uiState.totalTokens?.let { "всего $it" }
+            ).joinToString(", ")
+          )
+        }
+        uiState.finishReason?.let { reason ->
+          add("Причина завершения: ${when (reason) {
+            "stop" -> "модель закончила сама или достигла stop sequence: $STOP_SEQUENCE"
+            "length" -> "достигнут лимит токенов"
+            else -> reason
+          }}")
+        }
+      }
+      if (parts.isNotEmpty()) {
+        Text(
+          text = parts.joinToString(" • "),
+          style = MaterialTheme.typography.bodySmall,
+          color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+      }
+    }
 
     if (uiState.error != null) {
       Text(
