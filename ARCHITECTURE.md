@@ -37,3 +37,12 @@
 - Успех: `choices[0].message.content` (строка или массив блоков с `text` — обрабатывает `MessageContentDeserializer`).
 - В ответе также: `usage` (prompt_tokens, completion_tokens, total_tokens, completion_tokens_details.reasoning_tokens), `choices[0].finish_reason`.
 - Всё это маппится в `ChatResponse` и отображается в UI (текст ответа + строка с токенами и причиной завершения).
+
+## Экран Discussion
+
+- **Поток:** DiscussionScreen → DiscussionViewModel → ChatRepository.solveWithReasoningMode (или compareResponses) → sendWithMessages → OpenAiApi.
+- **Навигация:** MainActivity с NavHost; маршруты `chat` (ChatScreen, кнопка «Обсуждение») и `discussion` (DiscussionScreen, кнопка «К чату»).
+
+## Размещение типов
+
+- Enum и вспомогательные классы не размещать в пакете/файлах репозиториев (`data`). Держать их в `domain`, `model` или в пакете соответствующего экрана/слоя (например `ui.discussion`).

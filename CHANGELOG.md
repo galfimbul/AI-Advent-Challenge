@@ -17,3 +17,11 @@
 - **OpenAiDto:** `Usage`, `CompletionTokensDetails`; `MessageContentDeserializer` для content (строка или массив с `text`).
 - **UI:** настройки (макс. токенов, чекбокс «Без ограничения»), отображение токенов и причины завершения.
 - Обработка пустого ответа при `finish_reason == "length"` (reasoning-модели).
+
+## День 3 (ветка `challenge_day_3`)
+
+- **Экран Discussion:** одна задача решается четырьмя способами (прямой ответ, пошагово, свой промпт, эксперты); 4 блока ответов, кнопка «Сравнить».
+- **ChatRepository:** вынесена общая логика в `sendWithMessages(messages, maxTokens, stop)`; добавлены `solveWithReasoningMode(task, ReasoningMode)` и `compareResponses(task, direct, stepByStep, selfPrompt, experts)`.
+- **domain:** enum `ReasoningMode` (Direct, StepByStep, SelfPrompt, Experts) — не в data, по соглашению о размещении типов.
+- **ui/discussion:** `DiscussionScreen`, `DiscussionViewModel`, `DiscussionUiState`.
+- **Навигация:** Jetpack Navigation Compose; маршруты `chat` и `discussion`; кнопка «Обсуждение» на чате, «К чату» на экране Discussion.
