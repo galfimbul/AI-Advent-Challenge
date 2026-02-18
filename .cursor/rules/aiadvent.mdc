@@ -1,0 +1,29 @@
+---
+description: Контекст проекта AI Advent Challenge — стек, структура, где искать настройки
+alwaysApply: true
+---
+
+# AI Advent Challenge — контекст проекта
+
+- **Проект:** Android-приложение, запросы к ChatGPT через OpenAI Chat Completions API.
+- **Стек:** Kotlin, Jetpack Compose, Material 3, Retrofit, OkHttp, Gson, Coroutines.
+- **Ветки:** `challenge_day_1` (простой чат), `challenge_day_2` (настройки запроса, токены, stop sequence).
+
+## Где что лежит
+
+- **API-ключ:** не в коде; в `secret.properties` (из `secret.properties.example`), читается в `app/build.gradle.kts` → BuildConfig.OPENAI_API_KEY.
+- **Модель, параметры запроса:** `app/.../data/openai/OpenAiDto.kt` (модель по умолчанию), `app/.../data/ChatRepository.kt` (MAX_TOKENS, STOP_SEQUENCE, SYSTEM_MESSAGE, формирование запроса).
+- **Экран чата:** `ui/chat/ChatScreen.kt`, `ui/chat/ChatViewModel.kt`; вызов API — `ChatRepository.sendMessage(userMessage, maxTokens, stopPhrases)`.
+
+## Навигация по проекту
+
+- **PROJECT.md** — карта проекта, стек, структура пакетов, где искать ключ/модель/параметры.
+- **ARCHITECTURE.md** — поток данных, слои, как формируются запрос и ответ.
+- **CHANGELOG.md** — технические изменения по дням.
+- **README.md** — описание фич по дням для пользователя; не менять по соглашению.
+
+## Правила
+
+- Ответы пользователю на русском; код и коммиты можно на английском.
+- Ключ и секреты не коммитить; использовать только BuildConfig/secret.properties.
+- API: OpenAI Chat Completions; параметры — `max_completion_tokens`, `stop` (список строк); модель по умолчанию — gpt-4.1.
