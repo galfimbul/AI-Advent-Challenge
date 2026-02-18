@@ -5,6 +5,7 @@ import com.example.aiadventchallenge.BuildConfig
 import com.example.aiadventchallenge.data.openai.ChatCompletionRequest
 import com.example.aiadventchallenge.data.openai.ChatMessage
 import com.example.aiadventchallenge.data.openai.OpenAiApi
+import com.example.aiadventchallenge.domain.ReasoningMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -22,7 +23,9 @@ data class ChatResponse(
   val promptTokens: Int? = null,
   val completionTokens: Int? = null,
   val totalTokens: Int? = null,
-  val finishReason: String? = null
+  val finishReason: String? = null,
+  /** Для способа «Свой промпт» — текст промпта, сгенерированного моделью в первом запросе. */
+  val generatedPrompt: String? = null
 )
 
 private const val LOG_TAG = "OpenAI"
@@ -66,6 +69,19 @@ class ChatRepository {
     userMessage: String,
     maxTokens: Int? = null,
     stopPhrases: List<String>?
+  ): Result<ChatResponse> = sendWithMessages(
+    messages = listOf(
+      ChatMessage(role = "system", content = SYSTEM_MESSAGE),
+      ChatMessage(role = "user", content = userMessage)
+    ),
+    maxTokens = maxTokens,
+    stopPhrases = stopPhrases
+  )
+
+  private suspend fun sendWithMessages(
+    messages: List<ChatMessage>,
+    maxTokens: Int? = null,
+    stopPhrases: List<String>? = null
   ): Result<ChatResponse> = withContext(Dispatchers.IO) {
     val apiKey = BuildConfig.OPENAI_API_KEY
     if (apiKey.isNullOrEmpty()) {
@@ -73,11 +89,8 @@ class ChatRepository {
     }
     try {
       val request = ChatCompletionRequest(
-        messages = listOf(
-          ChatMessage(role = "system", content = SYSTEM_MESSAGE),
-          ChatMessage(role = "user", content = userMessage)
-        ),
-        maxCompletionTokens = maxTokens, // null = без ограничения, иначе указанное значение
+        messages = messages,
+        maxCompletionTokens = maxTokens,
         stop = stopPhrases
       )
       val response = api.createChatCompletion(
@@ -114,7 +127,6 @@ class ChatRepository {
           }
           Result.success(usageInfo.copy(content = msg))
         }
-
         else -> {
           Log.w(LOG_TAG, "Пустой content. body=$body choices=${body?.choices}")
           Result.failure(IOException("Пустой ответ от API. Проверьте Logcat (тег OpenAI) для структуры ответа."))
@@ -123,5 +135,79 @@ class ChatRepository {
     } catch (e: Exception) {
       Result.failure(e)
     }
+  }
+
+  private val discussionMaxTokens: Int? = 768  // +50% к 512 для пошаговых и длинных ответов
+
+  suspend fun solveWithReasoningMode(task: String, mode: ReasoningMode): Result<ChatResponse> =
+    withContext(Dispatchers.IO) {
+      when (mode) {
+        ReasoningMode.Direct -> sendWithMessages(
+          messages = listOf(ChatMessage(role = "user", content = task)),
+          maxTokens = discussionMaxTokens,
+          stopPhrases = null
+        )
+        ReasoningMode.StepByStep -> sendWithMessages(
+          messages = listOf(
+            ChatMessage(role = "system", content = "Решай задачу пошагово."),
+            ChatMessage(role = "user", content = task)
+          ),
+          maxTokens = discussionMaxTokens,
+          stopPhrases = null
+        )
+        ReasoningMode.SelfPrompt -> {
+          val promptRequest = "Составь краткий промпт (инструкцию) для решения следующей задачи. Задача: $task. Выведи только текст промпта."
+          val first = sendWithMessages(
+            messages = listOf(ChatMessage(role = "user", content = promptRequest)),
+            maxTokens = 300,
+            stopPhrases = null
+          ).getOrElse { return@withContext Result.failure(it) }
+          val prompt = first.content.trim()
+          if (prompt.isBlank()) return@withContext Result.failure(IOException("Пустой промпт от модели"))
+          sendWithMessages(
+            messages = listOf(
+              ChatMessage(role = "system", content = prompt),
+              ChatMessage(role = "user", content = task)
+            ),
+            maxTokens = discussionMaxTokens,
+            stopPhrases = null
+          ).map { it.copy(generatedPrompt = prompt) }
+        }
+        ReasoningMode.Experts -> sendWithMessages(
+          messages = listOf(
+            ChatMessage(
+              role = "system",
+              content = "Ты — группа экспертов: аналитик, инженер и критик. Реши задачу так, чтобы каждый эксперт дал свой ответ: сначала аналитик, затем инженер, затем критик. Подписывай ответы (Аналитик:, Инженер:, Критик:)."
+            ),
+            ChatMessage(role = "user", content = "Реши задачу, получи ответ от каждого эксперта: $task")
+          ),
+          maxTokens = discussionMaxTokens,
+          stopPhrases = null
+        )
+      }
+    }
+
+  suspend fun compareResponses(
+    task: String,
+    direct: String,
+    stepByStep: String,
+    selfPrompt: String,
+    experts: String
+  ): Result<ChatResponse> = withContext(Dispatchers.IO) {
+    fun orPlaceholder(s: String) = s.ifBlank { "(нет ответа)" }
+    val userContent = buildString {
+      append("Задача:\n$task\n\n")
+      append("Ответы четырьмя способами:\n\n")
+      append("1. Прямой ответ:\n${orPlaceholder(direct)}\n\n")
+      append("2. Пошагово:\n${orPlaceholder(stepByStep)}\n\n")
+      append("3. Свой промпт:\n${orPlaceholder(selfPrompt)}\n\n")
+      append("4. Эксперты:\n${orPlaceholder(experts)}\n\n")
+      append("Сравни эти ответы: отличаются ли они, какой способ дал наиболее точный и обоснованный результат? Ответь кратко.")
+    }
+    sendWithMessages(
+      messages = listOf(ChatMessage(role = "user", content = userContent)),
+      maxTokens = 768,
+      stopPhrases = null
+    )
   }
 }

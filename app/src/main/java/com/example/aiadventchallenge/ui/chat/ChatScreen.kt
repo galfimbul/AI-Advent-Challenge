@@ -28,7 +28,8 @@ import com.example.aiadventchallenge.data.STOP_SEQUENCE
 @Composable
 fun ChatScreen(
   modifier: Modifier = Modifier,
-  viewModel: ChatViewModel = viewModel()
+  viewModel: ChatViewModel = viewModel(),
+  onNavigateToDiscussion: () -> Unit = {}
 ) {
   val uiState by viewModel.uiState.collectAsState()
 
@@ -39,10 +40,19 @@ fun ChatScreen(
       .verticalScroll(rememberScrollState()),
     verticalArrangement = Arrangement.spacedBy(16.dp)
   ) {
-    Text(
-      text = "ChatGPT",
-      style = MaterialTheme.typography.headlineMedium
-    )
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      horizontalArrangement = Arrangement.SpaceBetween,
+      verticalAlignment = Alignment.CenterVertically
+    ) {
+      Text(
+        text = "ChatGPT",
+        style = MaterialTheme.typography.headlineMedium
+      )
+      Button(onClick = onNavigateToDiscussion) {
+        Text("Обсуждение")
+      }
+    }
 
     OutlinedTextField(
       value = uiState.query,
