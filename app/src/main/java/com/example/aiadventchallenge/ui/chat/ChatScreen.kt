@@ -29,7 +29,7 @@ import com.example.aiadventchallenge.data.STOP_SEQUENCE
 fun ChatScreen(
   modifier: Modifier = Modifier,
   viewModel: ChatViewModel = viewModel(),
-  onNavigateToDiscussion: () -> Unit = {}
+  onBack: () -> Unit = {}
 ) {
   val uiState by viewModel.uiState.collectAsState()
 
@@ -49,8 +49,8 @@ fun ChatScreen(
         text = "ChatGPT",
         style = MaterialTheme.typography.headlineMedium
       )
-      Button(onClick = onNavigateToDiscussion) {
-        Text("Обсуждение")
+      Button(onClick = onBack) {
+        Text("Назад")
       }
     }
 

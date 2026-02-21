@@ -14,7 +14,7 @@
 
 ```
 app/src/main/java/com/example/aiadventchallenge/
-├── MainActivity.kt              # Точка входа, NavHost (chat / discussion)
+├── MainActivity.kt              # Точка входа, NavHost (home / chat / discussion)
 ├── domain/
 │   └── ReasoningMode.kt         # Enum режимов рассуждения (не в data)
 ├── data/
@@ -24,6 +24,9 @@ app/src/main/java/com/example/aiadventchallenge/
 │       └── OpenAiDto.kt         # Request/Response DTO, MessageContentDeserializer
 └── ui/
     ├── theme/                   # Цвета, типографика, тема
+    ├── home/
+    │   ├── HomeScreen.kt        # Главный экран: картинка, название, секции с навигацией
+    │   └── HomeNav.kt           # HomeSection, HomeNavItem, HOME_SECTIONS
     ├── chat/
     │   ├── ChatScreen.kt        # Экран: ввод, настройки, ответ, токены
     │   └── ChatViewModel.kt     # Состояние, вызов repository.sendMessage
@@ -42,6 +45,7 @@ app/src/main/java/com/example/aiadventchallenge/
 | Лимит токенов, stop sequence | `ChatRepository.kt` → `MAX_TOKENS`, `STOP_SEQUENCE`; передаются из ViewModel |
 | Параметры запроса (max_tokens, stop) | `ChatRepository.sendMessage()` формирует `ChatCompletionRequest` |
 | System message | `ChatRepository.kt` → `SYSTEM_MESSAGE` |
+| Главный экран, секции навигации | `ui/home/` (HomeScreen, HomeNav), маршрут `home` |
 | Экран Discussion, режимы рассуждения | `ui/discussion/`, `ChatRepository.solveWithReasoningMode`, `domain/ReasoningMode` |
 | Логи запросов/ответов | Logcat, тег `OpenAI` |
 
@@ -56,3 +60,4 @@ app/src/main/java/com/example/aiadventchallenge/
 - `challenge_day_1` — первый день (простой запрос, экран чата)
 - `challenge_day_2` — настройки запроса (токены, stop, «без ограничения»), отображение usage
 - `challenge_day_3` — экран Discussion (4 способа рассуждения, сравнение), навигация
+- `home-screen` — главный экран (home), drawable-картинка, секция «Промптинг», кнопки «Назад» на чате и обсуждении

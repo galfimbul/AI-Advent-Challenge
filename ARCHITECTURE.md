@@ -41,8 +41,13 @@
 ## Экран Discussion
 
 - **Поток:** DiscussionScreen → DiscussionViewModel → ChatRepository.solveWithReasoningMode (или compareResponses) → sendWithMessages → OpenAiApi.
-- **Навигация:** MainActivity с NavHost; маршруты `chat` (ChatScreen, кнопка «Обсуждение») и `discussion` (DiscussionScreen, кнопка «К чату»).
+- **Навигация:** MainActivity с NavHost; маршруты `chat` и `discussion`; на обоих экранах кнопка «Назад» (popBackStack() на home). Переход между чатом и обсуждением только через главный экран.
+
+## Главный экран (Home)
+
+- **Старт:** startDestination = `home`; HomeScreen — изображение (drawable) на тему AI/робота, название «Ai Advent Challenge With Love», раскрывающиеся секции (аккордеон).
+- **Переходы:** из home по кнопкам в секции «Промптинг» — на `chat` или `discussion`; с экранов Чат и Обсуждение кнопка «Назад» — popBackStack() на home.
 
 ## Размещение типов
 
-- Enum и вспомогательные классы не размещать в пакете/файлах репозиториев (`data`). Держать их в `domain`, `model` или в пакете соответствующего экрана/слоя (например `ui.discussion`).
+- Вспомогательные классы для стейтов хранить отдельно от ViewModel (отдельный файл, например `*UiState.kt`, или разнесённые типы в пакете экрана).

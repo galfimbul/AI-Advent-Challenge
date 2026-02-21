@@ -24,4 +24,12 @@
 - **ChatRepository:** вынесена общая логика в `sendWithMessages(messages, maxTokens, stop)`; добавлены `solveWithReasoningMode(task, ReasoningMode)` и `compareResponses(task, direct, stepByStep, selfPrompt, experts)`.
 - **domain:** enum `ReasoningMode` (Direct, StepByStep, SelfPrompt, Experts) — не в data, по соглашению о размещении типов.
 - **ui/discussion:** `DiscussionScreen`, `DiscussionViewModel`, `DiscussionUiState`.
-- **Навигация:** Jetpack Navigation Compose; маршруты `chat` и `discussion`; кнопка «Обсуждение» на чате, «К чату» на экране Discussion.
+- **Навигация:** Jetpack Navigation Compose; маршруты `chat` и `discussion`; переход между экранами — только через главный экран.
+
+## Главный экран (ветка `home-screen`)
+
+- **HomeScreen:** стартовая точка приложения; изображение (drawable) на тему AI и робота, название «Ai Advent Challenge With Love», раскрывающиеся блоки по темам с кнопками навигации.
+- **Маршруты:** `home` (startDestination), `chat`, `discussion`; на экранах Чат и Обсуждение кнопка «Назад» — popBackStack() на home; перехода между чатом и обсуждением напрямую нет.
+- **Секции:** данные в `ui.home.HomeNav` (HomeSection, HomeNavItem, HOME_SECTIONS); первый блок «Промптинг» с пунктами Чат и Обсуждение.
+- **Аккордеон:** одна открытая секция, AnimatedVisibility для раскрытия/сворачивания.
+- **Картинка:** 70% ширины экрана, высота пропорциональна (aspectRatio), прозрачный фон контейнера.

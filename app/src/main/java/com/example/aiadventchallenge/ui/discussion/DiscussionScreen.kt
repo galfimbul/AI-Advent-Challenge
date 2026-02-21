@@ -81,7 +81,7 @@ fun DiscussionScreen(
         style = MaterialTheme.typography.headlineMedium
       )
       Button(onClick = onBack) {
-        Text("К чату")
+        Text("Назад")
       }
     }
 

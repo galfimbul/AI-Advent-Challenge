@@ -13,6 +13,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.aiadventchallenge.ui.chat.ChatScreen
 import com.example.aiadventchallenge.ui.discussion.DiscussionScreen
+import com.example.aiadventchallenge.ui.home.HomeScreen
 import com.example.aiadventchallenge.ui.theme.AIAdventChallengeTheme
 
 class MainActivity : ComponentActivity() {
@@ -25,13 +26,19 @@ class MainActivity : ComponentActivity() {
         Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
           NavHost(
             navController = navController,
-            startDestination = "chat",
+            startDestination = "home",
             modifier = Modifier.padding(innerPadding)
           ) {
+            composable("home") {
+              HomeScreen(
+                modifier = Modifier.fillMaxSize(),
+                onNavigate = { navController.navigate(it) }
+              )
+            }
             composable("chat") {
               ChatScreen(
                 modifier = Modifier.fillMaxSize(),
-                onNavigateToDiscussion = { navController.navigate("discussion") }
+                onBack = { navController.popBackStack() }
               )
             }
             composable("discussion") {
