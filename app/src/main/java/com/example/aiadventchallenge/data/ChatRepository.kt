@@ -82,7 +82,8 @@ class ChatRepository {
     messages: List<ChatMessage>,
     maxTokens: Int? = null,
     stopPhrases: List<String>? = null,
-    temperature: Float? = null
+    temperature: Float? = null,
+    model: String? = null
   ): Result<ChatResponse> = withContext(Dispatchers.IO) {
     val apiKey = BuildConfig.OPENAI_API_KEY
     if (apiKey.isNullOrEmpty()) {
@@ -90,6 +91,7 @@ class ChatRepository {
     }
     try {
       val request = ChatCompletionRequest(
+        model = model ?: "gpt-4.1",
         messages = messages,
         maxCompletionTokens = maxTokens,
         stop = stopPhrases,
@@ -137,6 +139,84 @@ class ChatRepository {
     } catch (e: Exception) {
       Result.failure(e)
     }
+  }
+
+  /** Модели для экрана «Версии моделей»: слабая, средняя, сильная. */
+  companion object {
+    /** Слабая → средняя → сильная. */
+    val MODELS_FOR_COMPARISON: List<Pair<String, String>> = listOf(
+      "gpt-4o-mini-2024-07-18" to "GPT-4o mini",
+      "gpt-4.1" to "GPT-4.1",
+      "gpt-5-nano" to "GPT-5 nano"
+    )
+    /** Цены USD за 1M токенов (input, output). Кеш по условию не учитываем. */
+    private val PRICING_PER_1M: Map<String, Pair<Double, Double>> = mapOf(
+      "gpt-4o-mini-2024-07-18" to (0.30 to 1.20),
+      "gpt-5-nano" to (0.05 to 0.40),
+      "gpt-4.1" to (2.00 to 8.00),
+    )
+  }
+
+  /** Один запрос к указанной модели с замером времени и расчётом стоимости. */
+  suspend fun runWithModel(
+    userMessage: String,
+    modelId: String,
+    displayName: String
+  ): Result<ModelRunResult> = withContext(Dispatchers.IO) {
+    val messages = listOf(
+      ChatMessage(role = "system", content = SYSTEM_MESSAGE),
+      ChatMessage(role = "user", content = userMessage)
+    )
+    val startMs = System.currentTimeMillis()
+    val result = sendWithMessages(
+      messages = messages,
+      maxTokens = null,
+      stopPhrases = null,
+      model = modelId
+    )
+    val elapsedMs = System.currentTimeMillis() - startMs
+    result.map { response ->
+      val costUsd = PRICING_PER_1M[modelId]?.let { (inputPer1M, outputPer1M) ->
+        val prompt = (response.promptTokens ?: 0) / 1_000_000.0
+        val completion = (response.completionTokens ?: 0) / 1_000_000.0
+        prompt * inputPer1M + completion * outputPer1M
+      }
+      ModelRunResult(
+        modelId = modelId,
+        displayName = displayName,
+        content = response.content,
+        promptTokens = response.promptTokens,
+        completionTokens = response.completionTokens,
+        totalTokens = response.totalTokens,
+        responseTimeMs = elapsedMs,
+        costUsd = costUsd
+      )
+    }
+  }
+
+  /** Сравнить ответы трёх моделей: краткий вывод о качестве, скорости, ресурсоёмкости. */
+  suspend fun compareModelResponses(
+    prompt: String,
+    runs: List<ModelRunResult>
+  ): Result<ChatResponse> = withContext(Dispatchers.IO) {
+    fun orPlaceholder(s: String) = s.ifBlank { "(нет ответа)" }
+    val userContent = buildString {
+      append("Один и тот же запрос:\n$prompt\n\n")
+      append("Ответы трёх моделей:\n\n")
+      runs.forEachIndexed { i, run ->
+        append("${i + 1}. ${run.displayName} (${run.responseTimeMs} мс, ${run.totalTokens ?: "?"} токенов):\n")
+        append("${orPlaceholder(run.content)}\n\n")
+      }
+      append(
+        "Сравни эти ответы по: 1) качеству и точности, 2) скорости ответа, 3) ресурсоёмкости (токены, стоимость). " +
+          "Дай короткий вывод: когда какую модель лучше использовать."
+      )
+    }
+    sendWithMessages(
+      messages = listOf(ChatMessage(role = "user", content = userContent)),
+      maxTokens = null,
+      stopPhrases = null
+    )
   }
 
   private val discussionMaxTokens: Int? = 768  // +50% к 512 для пошаговых и длинных ответов

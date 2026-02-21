@@ -43,10 +43,16 @@
 - **Поток:** DiscussionScreen → DiscussionViewModel → ChatRepository.solveWithReasoningMode (или compareResponses) → sendWithMessages → OpenAiApi.
 - **Навигация:** MainActivity с NavHost; маршруты `chat` и `discussion`; на обоих экранах кнопка «Назад» (popBackStack() на home). Переход между чатом и обсуждением только через главный экран.
 
+## Экран «Версии моделей» (Model Comparison)
+
+- **Поток:** ModelComparisonScreen → ModelComparisonViewModel → ChatRepository.runWithModel(prompt, modelId, displayName) для каждой из трёх моделей (gpt-4o-mini, gpt-4o, gpt-4.1); замер времени и расчёт стоимости в репозитории; опционально compareModelResponses(prompt, runs) для короткого вывода от API.
+- **Данные:** sendWithMessages принимает опциональный параметр `model`; результат — ModelRunResult (content, токены, responseTimeMs, costUsd). Константы MODELS_FOR_COMPARISON и таблица цен в ChatRepository.
+- **Навигация:** маршрут `modelcomparison`, пункт «Версии моделей» в секции «Промптинг» на главном экране; при загрузке — LoadingOverlay.
+
 ## Главный экран (Home)
 
 - **Старт:** startDestination = `home`; HomeScreen — изображение (drawable) на тему AI/робота, название «Ai Advent Challenge With Love», раскрывающиеся секции (аккордеон).
-- **Переходы:** из home по кнопкам в секции «Промптинг» — на `chat` или `discussion`; с экранов Чат и Обсуждение кнопка «Назад» — popBackStack() на home.
+- **Переходы:** из home по кнопкам в секции «Промптинг» — на `chat`, `discussion`, `temperature`, `modelcomparison`; с экранов кнопка «Назад» — popBackStack() на home.
 
 ## Размещение типов
 

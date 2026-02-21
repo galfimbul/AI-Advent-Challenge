@@ -43,3 +43,10 @@
 - **ui/components:** `LoadingOverlay(visible)` — переиспользуемый полноэкранный оверлей с лоудером по центру, перекрывает системные панели, светлый фон (alpha 0.6); используется на экране «Температура».
 - **Навигация:** маршрут `temperature`, пункт «Температура» в секции «Промптинг» на главном экране.
 - **Правила:** в `.cursor/rules/aiadvent.mdc` — при создании новых файлов агент добавляет их в git.
+
+## День 5 (Версии моделей)
+
+- **Экран «Версии моделей»:** один запрос выполняется на трёх моделях OpenAI (gpt-4o-mini, gpt-4o, gpt-4.1); замер времени ответа, отображение токенов и ориентировочной стоимости; карточки с ответами, кнопка «Сравнить» для короткого вывода от API; блок «Ссылки» (Модели OpenAI, Тарифы).
+- **Data:** в `ChatRepository.sendWithMessages` добавлен параметр `model: String? = null`; тип `ModelRunResult` (modelId, displayName, content, promptTokens, completionTokens, totalTokens, responseTimeMs, costUsd); константы `MODELS_FOR_COMPARISON` и таблица цен за 1M токенов; `runWithModel(userMessage, modelId, displayName)` с замером времени и расчётом стоимости; `compareModelResponses(prompt, runs)` для сравнения ответов трёх моделей.
+- **ui/modelcomparison:** `ModelComparisonScreen`, `ModelComparisonViewModel`, `ModelComparisonUiState`; при загрузке — `LoadingOverlay`; ссылки открываются через Intent.ACTION_VIEW.
+- **Навигация:** маршрут `modelcomparison`, пункт «Версии моделей» в секции «Промптинг» на главном экране.

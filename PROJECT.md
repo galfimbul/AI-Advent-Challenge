@@ -14,12 +14,13 @@
 
 ```
 app/src/main/java/com/example/aiadventchallenge/
-├── MainActivity.kt              # Точка входа, NavHost (home / chat / discussion / temperature)
+├── MainActivity.kt              # Точка входа, NavHost (home / chat / discussion / temperature / modelcomparison)
 ├── domain/
 │   ├── ReasoningMode.kt         # Enum режимов рассуждения (не в data)
 │   └── TemperaturePreset.kt     # Константы и пресеты температуры (0–2, шаг 0.1)
 ├── data/
-│   ├── ChatRepository.kt        # Запросы к API, sendMessage, sendWithTemperature, compareResponses, compareTemperatureResponses
+│   ├── ChatRepository.kt        # Запросы к API, sendMessage, sendWithTemperature, runWithModel, compareModelResponses
+│   ├── ModelRunResult.kt        # Результат одного запроса к модели (время, токены, стоимость)
 │   └── openai/
 │       ├── OpenAiApi.kt         # Retrofit: POST v1/chat/completions
 │       └── OpenAiDto.kt         # Request/Response DTO, MessageContentDeserializer
@@ -37,10 +38,14 @@ app/src/main/java/com/example/aiadventchallenge/
     │   ├── DiscussionScreen.kt   # Экран: задача, 4 способа, сравнение
     │   ├── DiscussionViewModel.kt
     │   └── DiscussionUiState.kt
-    └── temperature/
-        ├── TemperatureScreen.kt   # Экран: ползунок 0–2, пресеты, список ответов, сравнение
-        ├── TemperatureViewModel.kt
-        └── TemperatureUiState.kt  # TemperatureRun, runs, sliderTemperature
+    ├── temperature/
+    │   ├── TemperatureScreen.kt   # Экран: ползунок 0–2, пресеты, список ответов, сравнение
+    │   ├── TemperatureViewModel.kt
+    │   └── TemperatureUiState.kt  # TemperatureRun, runs, sliderTemperature
+    └── modelcomparison/
+        ├── ModelComparisonScreen.kt   # Экран: один запрос на трёх моделях, время/токены/стоимость, вывод, ссылки
+        ├── ModelComparisonViewModel.kt
+        └── ModelComparisonUiState.kt
 ```
 
 ## Где что искать
@@ -56,6 +61,7 @@ app/src/main/java/com/example/aiadventchallenge/
 | Экран Discussion, режимы рассуждения | `ui/discussion/`, `ChatRepository.solveWithReasoningMode`, `domain/ReasoningMode` |
 | Температура (параметр API, экран сравнения) | `OpenAiDto.kt` → `temperature`, `ChatRepository.sendWithTemperature`, `compareTemperatureResponses`, `ui/temperature/`, `domain/TemperaturePreset.kt` |
 | Оверлей загрузки (полноэкранный, переиспользуемый) | `ui/components/LoadingOverlay.kt` |
+| Версии моделей (слабая/средняя/сильная, время, токены, стоимость) | `ChatRepository.runWithModel`, `compareModelResponses`, `MODELS_FOR_COMPARISON`, `ui/modelcomparison/` |
 | Логи запросов/ответов | Logcat, тег `OpenAI` |
 
 ## Сборка и запуск

@@ -14,6 +14,7 @@ import androidx.navigation.compose.rememberNavController
 import com.example.aiadventchallenge.ui.chat.ChatScreen
 import com.example.aiadventchallenge.ui.discussion.DiscussionScreen
 import com.example.aiadventchallenge.ui.home.HomeScreen
+import com.example.aiadventchallenge.ui.modelcomparison.ModelComparisonScreen
 import com.example.aiadventchallenge.ui.temperature.TemperatureScreen
 import com.example.aiadventchallenge.ui.theme.AIAdventChallengeTheme
 
@@ -50,6 +51,12 @@ class MainActivity : ComponentActivity() {
             }
             composable("temperature") {
               TemperatureScreen(
+                modifier = Modifier.fillMaxSize(),
+                onBack = { navController.popBackStack() }
+              )
+            }
+            composable("modelcomparison") {
+              ModelComparisonScreen(
                 modifier = Modifier.fillMaxSize(),
                 onBack = { navController.popBackStack() }
               )
