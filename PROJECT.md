@@ -14,15 +14,18 @@
 
 ```
 app/src/main/java/com/example/aiadventchallenge/
-├── MainActivity.kt              # Точка входа, NavHost (home / chat / discussion)
+├── MainActivity.kt              # Точка входа, NavHost (home / chat / discussion / temperature)
 ├── domain/
-│   └── ReasoningMode.kt         # Enum режимов рассуждения (не в data)
+│   ├── ReasoningMode.kt         # Enum режимов рассуждения (не в data)
+│   └── TemperaturePreset.kt     # Константы и пресеты температуры (0–2, шаг 0.1)
 ├── data/
-│   ├── ChatRepository.kt        # Запросы к API, sendMessage, solveWithReasoningMode, compareResponses
+│   ├── ChatRepository.kt        # Запросы к API, sendMessage, sendWithTemperature, compareResponses, compareTemperatureResponses
 │   └── openai/
 │       ├── OpenAiApi.kt         # Retrofit: POST v1/chat/completions
 │       └── OpenAiDto.kt         # Request/Response DTO, MessageContentDeserializer
 └── ui/
+    ├── components/
+    │   └── LoadingOverlay.kt    # Полноэкранный оверлей с лоудером (переиспользуемый)
     ├── theme/                   # Цвета, типографика, тема
     ├── home/
     │   ├── HomeScreen.kt        # Главный экран: картинка, название, секции с навигацией
@@ -30,10 +33,14 @@ app/src/main/java/com/example/aiadventchallenge/
     ├── chat/
     │   ├── ChatScreen.kt        # Экран: ввод, настройки, ответ, токены
     │   └── ChatViewModel.kt     # Состояние, вызов repository.sendMessage
-    └── discussion/
-        ├── DiscussionScreen.kt   # Экран: задача, 4 способа, сравнение
-        ├── DiscussionViewModel.kt
-        └── DiscussionUiState.kt
+    ├── discussion/
+    │   ├── DiscussionScreen.kt   # Экран: задача, 4 способа, сравнение
+    │   ├── DiscussionViewModel.kt
+    │   └── DiscussionUiState.kt
+    └── temperature/
+        ├── TemperatureScreen.kt   # Экран: ползунок 0–2, пресеты, список ответов, сравнение
+        ├── TemperatureViewModel.kt
+        └── TemperatureUiState.kt  # TemperatureRun, runs, sliderTemperature
 ```
 
 ## Где что искать
@@ -47,6 +54,8 @@ app/src/main/java/com/example/aiadventchallenge/
 | System message | `ChatRepository.kt` → `SYSTEM_MESSAGE` |
 | Главный экран, секции навигации | `ui/home/` (HomeScreen, HomeNav), маршрут `home` |
 | Экран Discussion, режимы рассуждения | `ui/discussion/`, `ChatRepository.solveWithReasoningMode`, `domain/ReasoningMode` |
+| Температура (параметр API, экран сравнения) | `OpenAiDto.kt` → `temperature`, `ChatRepository.sendWithTemperature`, `compareTemperatureResponses`, `ui/temperature/`, `domain/TemperaturePreset.kt` |
+| Оверлей загрузки (полноэкранный, переиспользуемый) | `ui/components/LoadingOverlay.kt` |
 | Логи запросов/ответов | Logcat, тег `OpenAI` |
 
 ## Сборка и запуск
@@ -61,3 +70,4 @@ app/src/main/java/com/example/aiadventchallenge/
 - `challenge_day_2` — настройки запроса (токены, stop, «без ограничения»), отображение usage
 - `challenge_day_3` — экран Discussion (4 способа рассуждения, сравнение), навигация
 - `home-screen` — главный экран (home), drawable-картинка, секция «Промптинг», кнопки «Назад» на чате и обсуждении
+- Температура — экран «Температура» (ползунок 0–2, пресеты, сравнение при ≥2 ответах)

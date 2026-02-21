@@ -33,3 +33,13 @@
 - **Секции:** данные в `ui.home.HomeNav` (HomeSection, HomeNavItem, HOME_SECTIONS); первый блок «Промптинг» с пунктами Чат и Обсуждение.
 - **Аккордеон:** одна открытая секция, AnimatedVisibility для раскрытия/сворачивания.
 - **Картинка:** 70% ширины экрана, высота пропорциональна (aspectRatio), прозрачный фон контейнера.
+
+## Температура (экран «Температура»)
+
+- **API:** в `ChatCompletionRequest` добавлен параметр `temperature` (Float, 0–2); в `ChatRepository.sendWithMessages` — опциональный аргумент `temperature`; без лимита токенов для запросов с температурой; при temperature > 1.7 — лимит 800 токенов.
+- **ChatRepository:** таймаут 90 с (было 60); `sendWithTemperature(prompt, temperature)`, `compareTemperatureResponses(prompt, runs)` — сравнение по точности, креативности, разнообразию и рекомендации по настройкам.
+- **domain:** `TemperaturePreset.kt` — константы `MIN_TEMP`, `MAX_TEMP`, `TEMP_STEP` (0, 2, 0.1), пресеты с подписями «Название (значение)», `labelForTemperature(temp)`.
+- **ui/temperature:** `TemperatureScreen`, `TemperatureViewModel`, `TemperatureUiState`, `TemperatureRun`; ползунок 0–2 (шаг 0.1, 21 значение), пресет-кнопки, «Запустить все три», список ответов с возможностью сворачивания карточек, кнопка «Сравнить» внизу при ≥2 запусках; при смене промпта — очистка ответов и сравнения.
+- **ui/components:** `LoadingOverlay(visible)` — переиспользуемый полноэкранный оверлей с лоудером по центру, перекрывает системные панели, светлый фон (alpha 0.6); используется на экране «Температура».
+- **Навигация:** маршрут `temperature`, пункт «Температура» в секции «Промптинг» на главном экране.
+- **Правила:** в `.cursor/rules/aiadvent.mdc` — при создании новых файлов агент добавляет их в git.

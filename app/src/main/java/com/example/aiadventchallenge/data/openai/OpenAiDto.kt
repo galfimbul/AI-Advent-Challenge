@@ -13,7 +13,9 @@ data class ChatCompletionRequest(
   /** Максимальное количество токенов в ответе. Ограничивает длину ответа. */
   @SerializedName("max_completion_tokens") val maxCompletionTokens: Int? = null,
   /** Список последовательностей, при встрече которых генерация останавливается. */
-  val stop: List<String>? = null
+  val stop: List<String>? = null,
+  /** Случайность выбора токенов (OpenAI: 0–2). null — дефолт API. */
+  val temperature: Float? = null
 )
 
 data class ChatMessage(

@@ -29,7 +29,7 @@ data class ChatResponse(
 )
 
 private const val LOG_TAG = "OpenAI"
-private const val TIMEOUT_SECONDS = 60L
+private const val TIMEOUT_SECONDS = 90L  // 60 * 1.5 — для запросов с высокой температурой
 
 // Ограничение длины ответа в токенах (примерно 200-300 слов)
 const val MAX_TOKENS = 256
@@ -81,7 +81,8 @@ class ChatRepository {
   private suspend fun sendWithMessages(
     messages: List<ChatMessage>,
     maxTokens: Int? = null,
-    stopPhrases: List<String>? = null
+    stopPhrases: List<String>? = null,
+    temperature: Float? = null
   ): Result<ChatResponse> = withContext(Dispatchers.IO) {
     val apiKey = BuildConfig.OPENAI_API_KEY
     if (apiKey.isNullOrEmpty()) {
@@ -91,7 +92,8 @@ class ChatRepository {
       val request = ChatCompletionRequest(
         messages = messages,
         maxCompletionTokens = maxTokens,
-        stop = stopPhrases
+        stop = stopPhrases,
+        temperature = temperature
       )
       val response = api.createChatCompletion(
         authorization = "Bearer $apiKey",
@@ -207,6 +209,39 @@ class ChatRepository {
     sendWithMessages(
       messages = listOf(ChatMessage(role = "user", content = userContent)),
       maxTokens = 768,
+      stopPhrases = null
+    )
+  }
+
+  /** Один запрос с заданной температурой. При temperature > 1.7 — лимит 800 токенов, иначе без лимита. */
+  suspend fun sendWithTemperature(prompt: String, temperature: Float): Result<ChatResponse> =
+    sendWithMessages(
+      messages = listOf(ChatMessage(role = "user", content = prompt)),
+      maxTokens = if (temperature > 1.7f) 800 else null,
+      stopPhrases = null,
+      temperature = temperature
+    )
+
+  /** Сравнить ответы по точности, креативности, разнообразию; дать рекомендации по настройкам. */
+  suspend fun compareTemperatureResponses(
+    prompt: String,
+    runs: List<Pair<Float, String>>
+  ): Result<ChatResponse> = withContext(Dispatchers.IO) {
+    fun orPlaceholder(s: String) = s.ifBlank { "(нет ответа)" }
+    val userContent = buildString {
+      append("Один и тот же промпт:\n$prompt\n\n")
+      append("Ответы при разных значениях temperature:\n\n")
+      runs.sortedBy { it.first }.forEachIndexed { i, (temp, response) ->
+        append("${i + 1}. temperature = $temp:\n${orPlaceholder(response)}\n\n")
+      }
+      append(
+        "Сравни эти ответы по: 1) точности, 2) креативности, 3) разнообразию. " +
+          "Кратко сформулируй, для каких задач лучше подходит каждая из использованных настроек temperature."
+      )
+    }
+    sendWithMessages(
+      messages = listOf(ChatMessage(role = "user", content = userContent)),
+      maxTokens = null,
       stopPhrases = null
     )
   }

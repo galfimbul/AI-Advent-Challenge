@@ -17,7 +17,8 @@ val HOME_SECTIONS: List<HomeSection> = listOf(
     title = "Промптинг",
     items = listOf(
       HomeNavItem("Чат", "chat"),
-      HomeNavItem("Обсуждение", "discussion")
+      HomeNavItem("Обсуждение", "discussion"),
+      HomeNavItem("Температура", "temperature")
     )
   )
 )
