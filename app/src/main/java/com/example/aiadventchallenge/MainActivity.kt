@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.example.aiadventchallenge.ui.agent.AgentScreen
 import com.example.aiadventchallenge.ui.chat.ChatScreen
 import com.example.aiadventchallenge.ui.discussion.DiscussionScreen
 import com.example.aiadventchallenge.ui.home.HomeScreen
@@ -57,6 +58,12 @@ class MainActivity : ComponentActivity() {
             }
             composable("modelcomparison") {
               ModelComparisonScreen(
+                modifier = Modifier.fillMaxSize(),
+                onBack = { navController.popBackStack() }
+              )
+            }
+            composable("agent") {
+              AgentScreen(
                 modifier = Modifier.fillMaxSize(),
                 onBack = { navController.popBackStack() }
               )

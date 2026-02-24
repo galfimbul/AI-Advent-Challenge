@@ -50,3 +50,10 @@
 - **Data:** в `ChatRepository.sendWithMessages` добавлен параметр `model: String? = null`; тип `ModelRunResult` (modelId, displayName, content, promptTokens, completionTokens, totalTokens, responseTimeMs, costUsd); константы `MODELS_FOR_COMPARISON` и таблица цен за 1M токенов; `runWithModel(userMessage, modelId, displayName)` с замером времени и расчётом стоимости; `compareModelResponses(prompt, runs)` для сравнения ответов трёх моделей.
 - **ui/modelcomparison:** `ModelComparisonScreen`, `ModelComparisonViewModel`, `ModelComparisonUiState`; при загрузке — `LoadingOverlay`; ссылки открываются через Intent.ACTION_VIEW.
 - **Навигация:** маршрут `modelcomparison`, пункт «Версии моделей» в секции «Промптинг» на главном экране.
+
+## День 6 (Первый агент)
+
+- **domain/agent:** сущность «Агент» — `SimpleAgent(ChatRepository)`, метод `process(dialog, userRequest): Result<AgentResponse>`. Типы `AgentResponse` (reply, dialog, raw), `AgentDialogState`, `AgentMessage`, `AgentRole`. Агент формирует промпт с историей диалога, вызывает `repository.sendMessage`, маппит ответ в `AgentResponse`; параметры запроса (maxTokens, stop) заданы внутри агента.
+- **ui/agent:** `AgentUiState` (messages — история диалога, request, isLoading, error, токены), `AgentViewModel` (вызов только `agent.process()`, без прямого обращения к ChatRepository), `AgentScreen` — экран в виде чата: прокручиваемая история сообщений (LazyColumn, пузырьки «Вы» / «Агент»), поле ввода и кнопка «Отправить» внизу, `LoadingOverlay`.
+- **Навигация:** маршрут `agent`; на главном экране отдельный блок «Агент» с кнопкой «Начать диалог» (не в секции «Промптинг»).
+- **Клавиатура:** `Modifier.imePadding()` на экране «Агент» и `android:windowSoftInputMode="adjustResize"` в манифесте — кнопка «Отправить» остаётся видимой и нажимаемой при открытой клавиатуре.

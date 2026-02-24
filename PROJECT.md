@@ -14,8 +14,10 @@
 
 ```
 app/src/main/java/com/example/aiadventchallenge/
-├── MainActivity.kt              # Точка входа, NavHost (home / chat / discussion / temperature / modelcomparison)
+├── MainActivity.kt              # Точка входа, NavHost (home / chat / discussion / temperature / modelcomparison / agent)
 ├── domain/
+│   ├── agent/
+│   │   └── SimpleAgent.kt       # Агент: AgentResponse, AgentDialogState, process(dialog, request) → Result<AgentResponse>
 │   ├── ReasoningMode.kt         # Enum режимов рассуждения (не в data)
 │   └── TemperaturePreset.kt     # Константы и пресеты температуры (0–2, шаг 0.1)
 ├── data/
@@ -25,6 +27,10 @@ app/src/main/java/com/example/aiadventchallenge/
 │       ├── OpenAiApi.kt         # Retrofit: POST v1/chat/completions
 │       └── OpenAiDto.kt         # Request/Response DTO, MessageContentDeserializer
 └── ui/
+    ├── agent/
+    │   ├── AgentScreen.kt       # Экран-чат: LazyColumn сообщений (пузырьки Вы/Агент), ввод внизу, imePadding, LoadingOverlay
+    │   ├── AgentUiState.kt      # Состояние: messages (история диалога), request, загрузка, ошибка, токены
+    │   └── AgentViewModel.kt    # Вызов только agent.process(), без прямого ChatRepository
     ├── components/
     │   └── LoadingOverlay.kt    # Полноэкранный оверлей с лоудером (переиспользуемый)
     ├── theme/                   # Цвета, типографика, тема
@@ -62,6 +68,7 @@ app/src/main/java/com/example/aiadventchallenge/
 | Температура (параметр API, экран сравнения) | `OpenAiDto.kt` → `temperature`, `ChatRepository.sendWithTemperature`, `compareTemperatureResponses`, `ui/temperature/`, `domain/TemperaturePreset.kt` |
 | Оверлей загрузки (полноэкранный, переиспользуемый) | `ui/components/LoadingOverlay.kt` |
 | Версии моделей (слабая/средняя/сильная, время, токены, стоимость) | `ChatRepository.runWithModel`, `compareModelResponses`, `MODELS_FOR_COMPARISON`, `ui/modelcomparison/` |
+| Агент (domain), экран «Агент» (чат) | `domain/agent/SimpleAgent.kt`, `ui/agent/`; вызов API только через агента; на главном экране отдельный блок «Агент» с кнопкой «Начать диалог» |
 | Логи запросов/ответов | Logcat, тег `OpenAI` |
 
 ## Сборка и запуск

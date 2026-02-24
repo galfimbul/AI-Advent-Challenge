@@ -49,10 +49,17 @@
 - **Данные:** sendWithMessages принимает опциональный параметр `model`; результат — ModelRunResult (content, токены, responseTimeMs, costUsd). Константы MODELS_FOR_COMPARISON и таблица цен в ChatRepository.
 - **Навигация:** маршрут `modelcomparison`, пункт «Версии моделей» в секции «Промптинг» на главном экране; при загрузке — LoadingOverlay.
 
+## Экран «Агент»
+
+- **Поток:** AgentScreen → AgentViewModel → Agent.process(dialog, request) → ChatRepository.sendMessage → OpenAiApi. ViewModel не вызывает ChatRepository напрямую; логика «запрос → LLM → ответ» инкапсулирована в агенте (domain/agent/SimpleAgent). Агент формирует промпт с контекстом диалога, задаёт свои параметры запроса (maxTokens, stop) и маппит ChatResponse в AgentResponse.
+- **UI:** чат — история диалога в виде прокручиваемого списка сообщений (LazyColumn), пузырьки «Вы» / «Агент»; поле ввода и кнопка «Отправить» закреплены внизу; `imePadding()` и `adjustResize` в манифесте — кнопка остаётся доступной при открытой клавиатуре.
+- **Навигация:** маршрут `agent`; на главном экране отдельный блок «Агент» с кнопкой «Начать диалог»; при загрузке — LoadingOverlay.
+
 ## Главный экран (Home)
 
 - **Старт:** startDestination = `home`; HomeScreen — изображение (drawable) на тему AI/робота, название «Ai Advent Challenge With Love», раскрывающиеся секции (аккордеон).
-- **Переходы:** из home по кнопкам в секции «Промптинг» — на `chat`, `discussion`, `temperature`, `modelcomparison`; с экранов кнопка «Назад» — popBackStack() на home.
+- **Секции:** «Промптинг» (Чат, Обсуждение, Температура, Версии моделей) и отдельный блок «Агент» (кнопка «Начать диалог»).
+- **Переходы:** из home по кнопкам в секциях — на `chat`, `discussion`, `temperature`, `modelcomparison`, `agent`; с экранов кнопка «Назад» — popBackStack() на home.
 
 ## Размещение типов
 
