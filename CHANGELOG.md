@@ -57,3 +57,12 @@
 - **ui/agent:** `AgentUiState` (messages — история диалога, request, isLoading, error, токены), `AgentViewModel` (вызов только `agent.process()`, без прямого обращения к ChatRepository), `AgentScreen` — экран в виде чата: прокручиваемая история сообщений (LazyColumn, пузырьки «Вы» / «Агент»), поле ввода и кнопка «Отправить» внизу, `LoadingOverlay`.
 - **Навигация:** маршрут `agent`; на главном экране отдельный блок «Агент» с кнопкой «Начать диалог» (не в секции «Промптинг»).
 - **Клавиатура:** `Modifier.imePadding()` на экране «Агент» и `android:windowSoftInputMode="adjustResize"` в манифесте — кнопка «Отправить» остаётся видимой и нажимаемой при открытой клавиатуре.
+
+## День 7 (Сохранение контекста диалога агента)
+
+- **Room:** диалог с агентом сохраняется между перезапусками приложения. Таблица `agent_messages` (Entity: id, role, text, sortOrder); DAO: getAllMessages (ORDER BY sortOrder), insertAll, deleteAll); AppDatabase (version 1).
+- **data/agent:** `AgentMessageEntity`, `AgentMessageDao`, `AppDatabase`, `AgentDialogStorage` (load/save/clear с маппингом Entity ↔ domain AgentMessage/AgentDialogState).
+- **Application:** `AiAdventChallengeApplication` — в `onCreate()` один раз создаётся и сохраняется в поле `database` экземпляр БД; в манифесте `android:name=".AiAdventChallengeApplication"`.
+- **ViewModel:** `AgentViewModelFactory` получает БД из Application, создаёт `AgentDialogStorage` и передаёт в `AgentViewModel`. В `init` ViewModel загружает диалог из storage и выставляет в UI; после каждого успешного ответа агента сохраняет диалог в storage. Метод `clearDialog()` — очистка в storage и обнуление состояния.
+- **UI:** кнопка «Очистить историю» на экране агента (активна при непустой истории и не во время загрузки).
+- **Зависимости:** Room (runtime, ktx, compiler), KSP в libs.versions.toml и app/build.gradle.kts.

@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -26,6 +27,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -36,9 +38,12 @@ import com.example.aiadventchallenge.ui.components.LoadingOverlay
 @Composable
 fun AgentScreen(
   modifier: Modifier = Modifier,
-  viewModel: AgentViewModel = viewModel(),
   onBack: () -> Unit = {}
 ) {
+  val context = LocalContext.current
+  val viewModel: AgentViewModel = viewModel(
+    factory = AgentViewModelFactory(context.applicationContext)
+  )
   val uiState by viewModel.uiState.collectAsState()
   val listState = rememberLazyListState()
 
@@ -64,8 +69,16 @@ fun AgentScreen(
           text = "Агент",
           style = MaterialTheme.typography.headlineMedium
         )
-        Button(onClick = onBack) {
-          Text("Назад")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+          OutlinedButton(
+            onClick = viewModel::clearDialog,
+            enabled = !uiState.isLoading && uiState.messages.isNotEmpty()
+          ) {
+            Text("Очистить историю")
+          }
+          Button(onClick = onBack) {
+            Text("Назад")
+          }
         }
       }
 

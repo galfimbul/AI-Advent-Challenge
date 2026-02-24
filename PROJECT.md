@@ -15,12 +15,18 @@
 ```
 app/src/main/java/com/example/aiadventchallenge/
 ├── MainActivity.kt              # Точка входа, NavHost (home / chat / discussion / temperature / modelcomparison / agent)
+├── AiAdventChallengeApplication.kt  # Application: создание БД один раз в onCreate(), database
 ├── domain/
 │   ├── agent/
 │   │   └── SimpleAgent.kt       # Агент: AgentResponse, AgentDialogState, process(dialog, request) → Result<AgentResponse>
 │   ├── ReasoningMode.kt         # Enum режимов рассуждения (не в data)
 │   └── TemperaturePreset.kt     # Константы и пресеты температуры (0–2, шаг 0.1)
 ├── data/
+│   ├── agent/
+│   │   ├── AgentMessageEntity.kt  # Room Entity (id, role, text, sortOrder), таблица agent_messages
+│   │   ├── AgentMessageDao.kt     # getAllMessages, insertAll, deleteAll
+│   │   ├── AppDatabase.kt         # Room Database, version 1
+│   │   └── AgentDialogStorage.kt  # load(): AgentDialogState, save(dialog), clear(); маппинг Entity <-> domain
 │   ├── ChatRepository.kt        # Запросы к API, sendMessage, sendWithTemperature, runWithModel, compareModelResponses
 │   ├── ModelRunResult.kt        # Результат одного запроса к модели (время, токены, стоимость)
 │   └── openai/
@@ -28,9 +34,10 @@ app/src/main/java/com/example/aiadventchallenge/
 │       └── OpenAiDto.kt         # Request/Response DTO, MessageContentDeserializer
 └── ui/
     ├── agent/
-    │   ├── AgentScreen.kt       # Экран-чат: LazyColumn сообщений (пузырьки Вы/Агент), ввод внизу, imePadding, LoadingOverlay
+    │   ├── AgentScreen.kt       # Экран-чат: LazyColumn, ввод внизу, кнопка «Очистить историю», imePadding, LoadingOverlay
     │   ├── AgentUiState.kt      # Состояние: messages (история диалога), request, загрузка, ошибка, токены
-    │   └── AgentViewModel.kt    # Вызов только agent.process(), без прямого ChatRepository
+    │   ├── AgentViewModel.kt    # Вызов agent.process(); загрузка диалога из Storage в init, сохранение после ответа; clearDialog()
+    │   └── AgentViewModelFactory.kt  # Создаёт AgentDialogStorage из Application.database, передаёт в AgentViewModel
     ├── components/
     │   └── LoadingOverlay.kt    # Полноэкранный оверлей с лоудером (переиспользуемый)
     ├── theme/                   # Цвета, типографика, тема
@@ -69,6 +76,7 @@ app/src/main/java/com/example/aiadventchallenge/
 | Оверлей загрузки (полноэкранный, переиспользуемый) | `ui/components/LoadingOverlay.kt` |
 | Версии моделей (слабая/средняя/сильная, время, токены, стоимость) | `ChatRepository.runWithModel`, `compareModelResponses`, `MODELS_FOR_COMPARISON`, `ui/modelcomparison/` |
 | Агент (domain), экран «Агент» (чат) | `domain/agent/SimpleAgent.kt`, `ui/agent/`; вызов API только через агента; на главном экране отдельный блок «Агент» с кнопкой «Начать диалог» |
+| Сохранение диалога агента (Room) | `data/agent/` (AgentMessageEntity, AgentMessageDao, AppDatabase, AgentDialogStorage); БД создаётся один раз в `AiAdventChallengeApplication.onCreate()`; таблица `agent_messages` |
 | Логи запросов/ответов | Logcat, тег `OpenAI` |
 
 ## Сборка и запуск

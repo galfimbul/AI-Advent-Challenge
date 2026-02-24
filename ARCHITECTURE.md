@@ -52,7 +52,9 @@
 ## Экран «Агент»
 
 - **Поток:** AgentScreen → AgentViewModel → Agent.process(dialog, request) → ChatRepository.sendMessage → OpenAiApi. ViewModel не вызывает ChatRepository напрямую; логика «запрос → LLM → ответ» инкапсулирована в агенте (domain/agent/SimpleAgent). Агент формирует промпт с контекстом диалога, задаёт свои параметры запроса (maxTokens, stop) и маппит ChatResponse в AgentResponse.
-- **UI:** чат — история диалога в виде прокручиваемого списка сообщений (LazyColumn), пузырьки «Вы» / «Агент»; поле ввода и кнопка «Отправить» закреплены внизу; `imePadding()` и `adjustResize` в манифесте — кнопка остаётся доступной при открытой клавиатуре.
+- **Сохранение контекста (Room):** при создании ViewModel в `init` вызывается `AgentDialogStorage.load()` — диалог загружается из БД (таблица `agent_messages`, Entity → domain маппинг) и выставляется в `dialogState` и UI. После каждого успешного ответа агента вызывается `storage.save(dialogState)` — таблица очищается и заполняется заново. Кнопка «Очистить историю» вызывает `storage.clear()` и обнуляет состояние. БД создаётся один раз в `AiAdventChallengeApplication.onCreate()` и хранится в поле `database`; фабрика ViewModel получает её из `(context.applicationContext as AiAdventChallengeApplication).database`.
+- **Слой Room:** `data/agent/` — AgentMessageEntity (id, role, text, sortOrder), AgentMessageDao (getAllMessages, insertAll, deleteAll), AppDatabase, AgentDialogStorage (load/save/clear с маппингом в domain).
+- **UI:** чат — история диалога в виде прокручиваемого списка сообщений (LazyColumn), пузырьки «Вы» / «Агент»; кнопка «Очистить историю»; поле ввода и кнопка «Отправить» внизу; `imePadding()` и `adjustResize` в манифесте.
 - **Навигация:** маршрут `agent`; на главном экране отдельный блок «Агент» с кнопкой «Начать диалог»; при загрузке — LoadingOverlay.
 
 ## Главный экран (Home)
