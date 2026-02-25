@@ -66,3 +66,9 @@
 - **ViewModel:** `AgentViewModelFactory` получает БД из Application, создаёт `AgentDialogStorage` и передаёт в `AgentViewModel`. В `init` ViewModel загружает диалог из storage и выставляет в UI; после каждого успешного ответа агента сохраняет диалог в storage. Метод `clearDialog()` — очистка в storage и обнуление состояния.
 - **UI:** кнопка «Очистить историю» на экране агента (активна при непустой истории и не во время загрузки).
 - **Зависимости:** Room (runtime, ktx, compiler), KSP в libs.versions.toml и app/build.gradle.kts.
+
+## День 8 (Тест превышения контекста)
+
+- **SimpleAgent:** параметр `process(dialog, userRequest, forceContextOverflow: Boolean = false)`. При `forceContextOverflow == true` к промпту дописывается большой блок текста (~500k символов), запрос превышает лимит контекста API — для проверки обработки ошибки.
+- **AgentViewModel:** метод `sendContextOverflowTest()` — вызывает агента с фиксированным сообщением «Тест: превышение контекста» и `forceContextOverflow = true`; при ошибке добавляет это сообщение в чат и показывает текст ошибки.
+- **AgentScreen:** кнопка «Превысить контекст» (видна только при `BuildConfig.DEBUG`), слева от кнопки «Отправить». Позволяет в обычном диалоге нажать и увидеть реакцию приложения на превышение контекста.

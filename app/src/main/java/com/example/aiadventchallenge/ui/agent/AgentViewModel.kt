@@ -5,6 +5,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.aiadventchallenge.data.agent.AgentDialogStorage
 import com.example.aiadventchallenge.domain.agent.AgentDialogState
+import com.example.aiadventchallenge.domain.agent.AgentMessage
+import com.example.aiadventchallenge.domain.agent.AgentRole
 import com.example.aiadventchallenge.domain.agent.SimpleAgent
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -71,6 +73,44 @@ class AgentViewModel(
             isLoading = false,
             error = e.message ?: e.toString()
           )
+        }
+    }
+  }
+
+  /** Тест превышения контекста: отправляет запрос с искусственно раздутым промптом. Только для debug. */
+  fun sendContextOverflowTest() {
+    _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+    viewModelScope.launch {
+      agent.process(dialogState, "Тест: превышение контекста", forceContextOverflow = true)
+        .onSuccess { agentResponse ->
+          dialogState = agentResponse.dialog
+          _uiState.value = _uiState.value.copy(
+            isLoading = false,
+            messages = agentResponse.dialog.messages,
+            error = null,
+            promptTokens = agentResponse.raw.promptTokens,
+            completionTokens = agentResponse.raw.completionTokens,
+            totalTokens = agentResponse.raw.totalTokens
+          )
+          try {
+            storage.save(dialogState)
+          } catch (e: Exception) {
+            Log.e(LOG_TAG, "Failed to save dialog", e)
+          }
+        }
+        .onFailure { e ->
+          val testMsg = AgentMessage(AgentRole.User, "Тест: превышение контекста")
+          dialogState = AgentDialogState(dialogState.messages + testMsg)
+          _uiState.value = _uiState.value.copy(
+            isLoading = false,
+            messages = dialogState.messages,
+            error = e.message ?: e.toString()
+          )
+          try {
+            storage.save(dialogState)
+          } catch (ex: Exception) {
+            Log.e(LOG_TAG, "Failed to save dialog after overflow test", ex)
+          }
         }
     }
   }

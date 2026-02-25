@@ -31,6 +31,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.aiadventchallenge.BuildConfig
 import com.example.aiadventchallenge.domain.agent.AgentMessage
 import com.example.aiadventchallenge.domain.agent.AgentRole
 import com.example.aiadventchallenge.ui.components.LoadingOverlay
@@ -123,8 +124,18 @@ fun AgentScreen(
         )
         Row(
           modifier = Modifier.fillMaxWidth(),
-          horizontalArrangement = Arrangement.End
+          horizontalArrangement = Arrangement.End,
+          verticalAlignment = Alignment.CenterVertically
         ) {
+          if (BuildConfig.DEBUG) {
+            OutlinedButton(
+              onClick = viewModel::sendContextOverflowTest,
+              enabled = !uiState.isLoading
+            ) {
+              Text("Превысить контекст")
+            }
+            Spacer(modifier = Modifier.padding(horizontal = 8.dp))
+          }
           Button(
             onClick = viewModel::sendRequest,
             enabled = !uiState.isLoading && uiState.request.isNotBlank()

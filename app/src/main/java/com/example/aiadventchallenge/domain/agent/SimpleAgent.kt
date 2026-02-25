@@ -34,7 +34,8 @@ class SimpleAgent(
 
   suspend fun process(
     dialog: AgentDialogState,
-    userRequest: String
+    userRequest: String,
+    forceContextOverflow: Boolean = false
   ): Result<AgentResponse> {
     val trimmed = userRequest.trim()
     if (trimmed.isEmpty()) {
@@ -60,6 +61,10 @@ class SimpleAgent(
       append("\n\nНовый запрос пользователя:\n")
       append(trimmed)
       append("\n\nДай развёрнутый, но по существу ответ, учитывая контекст беседы.")
+      if (forceContextOverflow) {
+        val chunk = " заполнение контекста для теста. "
+        repeat(20_000) { append(chunk) } // ~500k символов → превышение лимита контекста API
+      }
     }
 
     return repository.sendMessage(

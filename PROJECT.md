@@ -18,7 +18,7 @@ app/src/main/java/com/example/aiadventchallenge/
 ├── AiAdventChallengeApplication.kt  # Application: создание БД один раз в onCreate(), database
 ├── domain/
 │   ├── agent/
-│   │   └── SimpleAgent.kt       # Агент: AgentResponse, AgentDialogState, process(dialog, request) → Result<AgentResponse>
+│   │   └── SimpleAgent.kt       # Агент: process(dialog, request, forceContextOverflow); при forceContextOverflow — раздутый промпт для теста
 │   ├── ReasoningMode.kt         # Enum режимов рассуждения (не в data)
 │   └── TemperaturePreset.kt     # Константы и пресеты температуры (0–2, шаг 0.1)
 ├── data/
@@ -34,9 +34,9 @@ app/src/main/java/com/example/aiadventchallenge/
 │       └── OpenAiDto.kt         # Request/Response DTO, MessageContentDeserializer
 └── ui/
     ├── agent/
-    │   ├── AgentScreen.kt       # Экран-чат: LazyColumn, ввод внизу, кнопка «Очистить историю», imePadding, LoadingOverlay
+    │   ├── AgentScreen.kt       # Экран-чат: LazyColumn, ввод внизу; кнопки «Превысить контекст» (только debug), «Очистить историю», «Отправить»; imePadding, LoadingOverlay
     │   ├── AgentUiState.kt      # Состояние: messages (история диалога), request, загрузка, ошибка, токены
-    │   ├── AgentViewModel.kt    # Вызов agent.process(); загрузка диалога из Storage в init, сохранение после ответа; clearDialog()
+    │   ├── AgentViewModel.kt    # Вызов agent.process(); загрузка из Storage в init, сохранение после ответа; clearDialog(); sendContextOverflowTest() (debug)
     │   └── AgentViewModelFactory.kt  # Создаёт AgentDialogStorage из Application.database, передаёт в AgentViewModel
     ├── components/
     │   └── LoadingOverlay.kt    # Полноэкранный оверлей с лоудером (переиспользуемый)
@@ -77,6 +77,7 @@ app/src/main/java/com/example/aiadventchallenge/
 | Версии моделей (слабая/средняя/сильная, время, токены, стоимость) | `ChatRepository.runWithModel`, `compareModelResponses`, `MODELS_FOR_COMPARISON`, `ui/modelcomparison/` |
 | Агент (domain), экран «Агент» (чат) | `domain/agent/SimpleAgent.kt`, `ui/agent/`; вызов API только через агента; на главном экране отдельный блок «Агент» с кнопкой «Начать диалог» |
 | Сохранение диалога агента (Room) | `data/agent/` (AgentMessageEntity, AgentMessageDao, AppDatabase, AgentDialogStorage); БД создаётся один раз в `AiAdventChallengeApplication.onCreate()`; таблица `agent_messages` |
+| Тест превышения контекста (только debug) | Кнопка «Превысить контекст» слева от «Отправить» на экране агента; `SimpleAgent.process(..., forceContextOverflow = true)`; `AgentViewModel.sendContextOverflowTest()` |
 | Логи запросов/ответов | Logcat, тег `OpenAI` |
 
 ## Сборка и запуск
@@ -94,3 +95,4 @@ app/src/main/java/com/example/aiadventchallenge/
 - Температура — экран «Температура» (ползунок 0–2, пресеты, сравнение при ≥2 ответах)
 - `challenge_day_6` — первый агент (domain/agent, экран-чат, отдельный блок «Агент», «Начать диалог»)
 - `challenge_day_7` — сохранение контекста диалога агента (Room, Application, «Очистить историю»)
+- `challenge_day_8` — тест превышения контекста: кнопка «Превысить контекст» (только debug), слева от «Отправить»
