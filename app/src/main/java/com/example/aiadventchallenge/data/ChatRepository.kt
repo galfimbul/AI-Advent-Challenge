@@ -5,6 +5,8 @@ import com.example.aiadventchallenge.BuildConfig
 import com.example.aiadventchallenge.data.openai.ChatCompletionRequest
 import com.example.aiadventchallenge.data.openai.ChatMessage
 import com.example.aiadventchallenge.data.openai.OpenAiApi
+import com.example.aiadventchallenge.domain.agent.AgentMessage
+import com.example.aiadventchallenge.domain.agent.AgentRole
 import com.example.aiadventchallenge.domain.ReasoningMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -63,6 +65,28 @@ class ChatRepository {
       .addConverterFactory(GsonConverterFactory.create(gson))
       .build()
       .create(OpenAiApi::class.java)
+  }
+
+  /** Суммаризация блока диалога (до 10 сообщений) для сжатия контекста. Та же модель, что и чат. */
+  suspend fun summarizeDialog(messages: List<AgentMessage>): Result<String> = withContext(Dispatchers.IO) {
+    val dialogText = messages.joinToString("\n") { msg ->
+      val prefix = when (msg.role) {
+        AgentRole.User -> "Пользователь"
+        AgentRole.Assistant -> "Агент"
+      }
+      "$prefix: ${msg.text}"
+    }
+    sendWithMessages(
+      messages = listOf(
+        ChatMessage(
+          role = "system",
+          content = "Ты суммаризатор. Кратко суммаризируй диалог пользователя и агента, сохрани суть и факты. Выведи только текст суммаризации."
+        ),
+        ChatMessage(role = "user", content = "Диалог:\n$dialogText")
+      ),
+      maxTokens = null,
+      stopPhrases = null
+    ).map { it.content.trim() }
   }
 
   suspend fun sendMessage(

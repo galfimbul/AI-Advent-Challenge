@@ -14,6 +14,7 @@ data class AgentMessage(
 )
 
 data class AgentDialogState(
+  val summaries: List<String> = emptyList(),
   val messages: List<AgentMessage> = emptyList()
 )
 
@@ -35,6 +36,8 @@ class SimpleAgent(
   suspend fun process(
     dialog: AgentDialogState,
     userRequest: String,
+    useCompression: Boolean = false,
+    lastN: Int = 10,
     forceContextOverflow: Boolean = false
   ): Result<AgentResponse> {
     val trimmed = userRequest.trim()
@@ -42,18 +45,50 @@ class SimpleAgent(
       return Result.failure(IllegalArgumentException("Пустой запрос"))
     }
 
-    val historyText = buildString {
-      dialog.messages.forEach { msg ->
-        val prefix = when (msg.role) {
-          AgentRole.User -> "Пользователь"
-          AgentRole.Assistant -> "Агент"
+    val historyText = when {
+      forceContextOverflow -> {
+        buildString {
+          dialog.messages.forEach { msg ->
+            val prefix = when (msg.role) {
+              AgentRole.User -> "Пользователь"
+              AgentRole.Assistant -> "Агент"
+            }
+            append(prefix).append(": ").append(msg.text).append('\n')
+          }
+          val chunk = " заполнение контекста для теста. "
+          repeat(20_000) { append(chunk) }
         }
-        append(prefix)
-        append(": ")
-        append(msg.text)
-        append('\n')
       }
-    }.ifBlank { "(пока нет сообщений)" }
+      useCompression -> {
+        val lastMessages = dialog.messages.takeLast(lastN.coerceAtLeast(1))
+        buildString {
+          if (dialog.summaries.isNotEmpty()) {
+            append("Краткое содержание более ранней части диалога:\n")
+            append(dialog.summaries.joinToString("\n\n"))
+            append("\n\n")
+          }
+          append("Актуальная часть диалога:\n")
+          lastMessages.forEach { msg ->
+            val prefix = when (msg.role) {
+              AgentRole.User -> "Пользователь"
+              AgentRole.Assistant -> "Агент"
+            }
+            append(prefix).append(": ").append(msg.text).append('\n')
+          }
+        }.ifBlank { "(пока нет сообщений)" }
+      }
+      else -> {
+        buildString {
+          dialog.messages.forEach { msg ->
+            val prefix = when (msg.role) {
+              AgentRole.User -> "Пользователь"
+              AgentRole.Assistant -> "Агент"
+            }
+            append(prefix).append(": ").append(msg.text).append('\n')
+          }
+        }.ifBlank { "(пока нет сообщений)" }
+      }
+    }
 
     val prompt = buildString {
       append("История диалога между пользователем и агентом:\n")
@@ -61,10 +96,6 @@ class SimpleAgent(
       append("\n\nНовый запрос пользователя:\n")
       append(trimmed)
       append("\n\nДай развёрнутый, но по существу ответ, учитывая контекст беседы.")
-      if (forceContextOverflow) {
-        val chunk = " заполнение контекста для теста. "
-        repeat(20_000) { append(chunk) } // ~500k символов → превышение лимита контекста API
-      }
     }
 
     return repository.sendMessage(
@@ -77,7 +108,7 @@ class SimpleAgent(
         AgentMessage(AgentRole.Assistant, chatResponse.content)
       AgentResponse(
         reply = chatResponse.content,
-        dialog = AgentDialogState(newMessages),
+        dialog = AgentDialogState(summaries = dialog.summaries, messages = newMessages),
         raw = chatResponse
       )
     }

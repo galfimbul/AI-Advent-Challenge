@@ -72,3 +72,13 @@
 - **SimpleAgent:** параметр `process(dialog, userRequest, forceContextOverflow: Boolean = false)`. При `forceContextOverflow == true` к промпту дописывается большой блок текста (~500k символов), запрос превышает лимит контекста API — для проверки обработки ошибки.
 - **AgentViewModel:** метод `sendContextOverflowTest()` — вызывает агента с фиксированным сообщением «Тест: превышение контекста» и `forceContextOverflow = true`; при ошибке добавляет это сообщение в чат и показывает текст ошибки.
 - **AgentScreen:** кнопка «Превысить контекст» (видна только при `BuildConfig.DEBUG`), слева от кнопки «Отправить». Позволяет в обычном диалоге нажать и увидеть реакцию приложения на превышение контекста.
+
+## День 9 (Управление контекстом)
+
+- **Сжатие истории:** в промпт для LLM при включённом сжатии идут summaries блоков по 10 сообщений (с начала диалога) + последние N сообщений целиком. N настраивается (5, 10, 20). Пересечение последнего summary-блока с «последние N» допускается. Все сообщения по-прежнему хранятся в `agent_messages` и отображаются в чате; из БД ничего не удаляется.
+- **Room:** таблица `agent_summaries` (AgentSummaryEntity: id, text, sortOrder), AgentSummaryDao (getAllSummaries, insert, deleteAll). AppDatabase version 2, миграция 1→2. AgentDialogStorage: load() возвращает AgentDialogState(summaries, messages), save() — только сообщения, insertSummary(text, sortOrder), clear() — сообщения и summaries.
+- **ChatRepository:** метод `summarizeDialog(messages: List<AgentMessage>): Result<String>` — один вызов API с системным промптом «суммаризатор», та же модель (gpt-4.1); лимит токенов ответа не задаётся (maxTokens = null).
+- **Domain:** AgentDialogState(summaries, messages). SimpleAgent.process(..., useCompression, lastN) — формирование промпта из summaries + последние N при useCompression; запрос к LLM без лимита max_completion_tokens.
+- **ViewModel:** загрузка настроек сжатия из AgentCompressionPreferences (DataStore) в init; после успешного ответа при useCompression — ensureSummaries (генерация недостающих summaries по блокам по 10, сохранение в storage); setUseCompression, setLastN с сохранением в DataStore. Тосты сжатия только при реальной суммаризации: «Сжатие контекста…» в начале, «Сжатие контекста завершено» после добавления хотя бы одного summary; clearToastMessage().
+- **UI:** переключатель «Без сжатия» / «Со сжатием»; при сжатии — компактные кнопки выбора N (5, 10, 20). Строка токенов с подписью режима «(со сжатием)» / «(без сжатия)». Тосты через AgentUiState.toastMessage и LaunchedEffect в AgentScreen.
+- **Зависимости:** DataStore Preferences (libs.versions.toml, app/build.gradle.kts).

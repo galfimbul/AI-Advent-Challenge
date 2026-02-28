@@ -3,6 +3,8 @@ package com.example.aiadventchallenge.ui.agent
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.aiadventchallenge.data.ChatRepository
+import com.example.aiadventchallenge.data.agent.AgentCompressionPreferences
 import com.example.aiadventchallenge.data.agent.AgentDialogStorage
 import com.example.aiadventchallenge.domain.agent.AgentDialogState
 import com.example.aiadventchallenge.domain.agent.AgentMessage
@@ -16,12 +18,15 @@ import kotlinx.coroutines.launch
 private const val LOG_TAG = "AgentViewModel"
 
 /**
- * ViewModel экрана «Агент». Вызывает только агента (agent.process), не обращается к ChatRepository напрямую.
+ * ViewModel экрана «Агент». Вызывает только агента (agent.process), не обращается к ChatRepository напрямую для чата.
  * Диалог загружается из Room при создании и сохраняется после каждого ответа.
+ * При включённом сжатии после ответа вызывается генерация недостающих summaries (repository.summarizeDialog).
  */
 class AgentViewModel(
   private val agent: SimpleAgent,
-  private val storage: AgentDialogStorage
+  private val storage: AgentDialogStorage,
+  private val repository: ChatRepository,
+  private val compressionPreferences: AgentCompressionPreferences
 ) : ViewModel() {
 
   private val _uiState = MutableStateFlow(AgentUiState())
@@ -38,6 +43,17 @@ class AgentViewModel(
         Log.e(LOG_TAG, "Failed to load dialog", e)
       }
     }
+    viewModelScope.launch {
+      try {
+        val settings = compressionPreferences.getSettings()
+        _uiState.value = _uiState.value.copy(
+          useCompression = settings.useCompression,
+          lastN = settings.lastN
+        )
+      } catch (e: Exception) {
+        Log.e(LOG_TAG, "Failed to load compression settings", e)
+      }
+    }
   }
 
   fun updateRequest(text: String) {
@@ -48,9 +64,12 @@ class AgentViewModel(
     val request = _uiState.value.request.trim()
     if (request.isEmpty()) return
 
+    val useCompression = _uiState.value.useCompression
+    val lastN = _uiState.value.lastN
+
     _uiState.value = _uiState.value.copy(isLoading = true, error = null)
     viewModelScope.launch {
-      agent.process(dialogState, request)
+      agent.process(dialogState, request, useCompression = useCompression, lastN = lastN)
         .onSuccess { agentResponse ->
           dialogState = agentResponse.dialog
           _uiState.value = _uiState.value.copy(
@@ -60,10 +79,14 @@ class AgentViewModel(
             error = null,
             promptTokens = agentResponse.raw.promptTokens,
             completionTokens = agentResponse.raw.completionTokens,
-            totalTokens = agentResponse.raw.totalTokens
+            totalTokens = agentResponse.raw.totalTokens,
+            lastTokensModeCompression = useCompression
           )
           try {
             storage.save(dialogState)
+            if (useCompression) {
+              ensureSummaries(dialogState)
+            }
           } catch (e: Exception) {
             Log.e(LOG_TAG, "Failed to save dialog", e)
           }
@@ -74,6 +97,72 @@ class AgentViewModel(
             error = e.message ?: e.toString()
           )
         }
+    }
+  }
+
+  /** Генерирует и сохраняет недостающие summaries (блоки по 10 сообщений с начала). Сообщения не удаляются. */
+  private suspend fun ensureSummaries(current: AgentDialogState) {
+    val m = current.messages.size
+    val needSummaries = m / 10
+    var summaries = current.summaries
+    if (needSummaries <= summaries.size) {
+      dialogState = current.copy(summaries = summaries)
+      return
+    }
+    _uiState.value = _uiState.value.copy(toastMessage = "Сжатие контекста…")
+    var addedCount = 0
+    for (i in summaries.size until needSummaries) {
+      val start = i * 10
+      val end = (i + 1) * 10
+      if (end > current.messages.size) break
+      val block = current.messages.subList(start, end)
+      val result = repository.summarizeDialog(block)
+      result.getOrElse { e ->
+        Log.e(LOG_TAG, "Summarization failed", e)
+        _uiState.value = _uiState.value.copy(error = "Ошибка суммаризации: ${e.message}")
+        return
+      }
+      val summaryText = result.getOrNull() ?: continue
+      try {
+        storage.insertSummary(summaryText, i)
+        summaries = summaries + summaryText
+        addedCount++
+      } catch (e: Exception) {
+        Log.e(LOG_TAG, "Failed to insert summary", e)
+        _uiState.value = _uiState.value.copy(error = "Не удалось сохранить суммаризацию: ${e.message}")
+        return
+      }
+    }
+    dialogState = current.copy(summaries = summaries)
+    if (addedCount > 0) {
+      _uiState.value = _uiState.value.copy(toastMessage = "Сжатие контекста завершено")
+    }
+  }
+
+  fun clearToastMessage() {
+    _uiState.value = _uiState.value.copy(toastMessage = null)
+  }
+
+  fun setUseCompression(value: Boolean) {
+    _uiState.value = _uiState.value.copy(useCompression = value)
+    viewModelScope.launch {
+      try {
+        compressionPreferences.setUseCompression(value)
+      } catch (e: Exception) {
+        Log.e(LOG_TAG, "Failed to save useCompression", e)
+      }
+    }
+  }
+
+  fun setLastN(value: Int) {
+    val n = value.coerceIn(1, 100)
+    _uiState.value = _uiState.value.copy(lastN = n)
+    viewModelScope.launch {
+      try {
+        compressionPreferences.setLastN(n)
+      } catch (e: Exception) {
+        Log.e(LOG_TAG, "Failed to save lastN", e)
+      }
     }
   }
 
@@ -100,7 +189,7 @@ class AgentViewModel(
         }
         .onFailure { e ->
           val testMsg = AgentMessage(AgentRole.User, "Тест: превышение контекста")
-          dialogState = AgentDialogState(dialogState.messages + testMsg)
+          dialogState = AgentDialogState(summaries = dialogState.summaries, messages = dialogState.messages + testMsg)
           _uiState.value = _uiState.value.copy(
             isLoading = false,
             messages = dialogState.messages,

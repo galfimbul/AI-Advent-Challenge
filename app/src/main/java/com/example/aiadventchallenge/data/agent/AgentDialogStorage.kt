@@ -7,11 +7,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 class AgentDialogStorage(
-  private val dao: AgentMessageDao
+  private val messageDao: AgentMessageDao,
+  private val summaryDao: AgentSummaryDao
 ) {
 
   suspend fun load(): AgentDialogState = withContext(Dispatchers.IO) {
-    val entities = dao.getAllMessages()
+    val entities = messageDao.getAllMessages()
     val messages = entities.map { entity ->
       AgentMessage(
         role = when (entity.role) {
@@ -21,11 +22,12 @@ class AgentDialogStorage(
         text = entity.text
       )
     }
-    AgentDialogState(messages = messages)
+    val summaries = summaryDao.getAllSummaries().map { it.text }
+    AgentDialogState(summaries = summaries, messages = messages)
   }
 
   suspend fun save(dialog: AgentDialogState) = withContext(Dispatchers.IO) {
-    dao.deleteAll()
+    messageDao.deleteAll()
     if (dialog.messages.isNotEmpty()) {
       val entities = dialog.messages.mapIndexed { index, msg ->
         AgentMessageEntity(
@@ -37,11 +39,16 @@ class AgentDialogStorage(
           sortOrder = index
         )
       }
-      dao.insertAll(entities)
+      messageDao.insertAll(entities)
     }
   }
 
+  suspend fun insertSummary(text: String, sortOrder: Int) = withContext(Dispatchers.IO) {
+    summaryDao.insert(AgentSummaryEntity(text = text, sortOrder = sortOrder))
+  }
+
   suspend fun clear() = withContext(Dispatchers.IO) {
-    dao.deleteAll()
+    messageDao.deleteAll()
+    summaryDao.deleteAll()
   }
 }

@@ -11,7 +11,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -19,8 +23,10 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -30,6 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import android.widget.Toast
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.aiadventchallenge.BuildConfig
 import com.example.aiadventchallenge.domain.agent.AgentMessage
@@ -51,6 +58,13 @@ fun AgentScreen(
   LaunchedEffect(uiState.messages.size) {
     if (uiState.messages.isNotEmpty()) {
       listState.animateScrollToItem(uiState.messages.size - 1)
+    }
+  }
+
+  LaunchedEffect(uiState.toastMessage) {
+    uiState.toastMessage?.let { msg ->
+      Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+      viewModel.clearToastMessage()
     }
   }
 
@@ -79,6 +93,64 @@ fun AgentScreen(
           }
           Button(onClick = onBack) {
             Text("Назад")
+          }
+        }
+      }
+
+      Spacer(modifier = Modifier.height(8.dp))
+
+      Column(
+        modifier = Modifier
+          .fillMaxWidth()
+          .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+      ) {
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+          Text(
+            text = "Сжатие контекста",
+            style = MaterialTheme.typography.bodyMedium
+          )
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+              text = if (uiState.useCompression) "Со сжатием" else "Без сжатия",
+              style = MaterialTheme.typography.bodySmall,
+              color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Switch(
+              checked = uiState.useCompression,
+              onCheckedChange = viewModel::setUseCompression,
+              enabled = !uiState.isLoading
+            )
+          }
+        }
+        if (uiState.useCompression) {
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+          ) {
+            Text(
+              text = "Хранить полных сообщений:",
+              style = MaterialTheme.typography.bodySmall
+            )
+            listOf(5, 10, 20).forEach { n ->
+              OutlinedButton(
+                onClick = { viewModel.setLastN(n) },
+                enabled = !uiState.isLoading,
+                modifier = Modifier.height(28.dp),
+                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+              ) {
+                Text(
+                  text = if (n == uiState.lastN) "$n ✓" else "$n",
+                  style = MaterialTheme.typography.labelSmall
+                )
+              }
+            }
           }
         }
       }
@@ -144,8 +216,13 @@ fun AgentScreen(
           }
         }
         if (uiState.promptTokens != null || uiState.completionTokens != null || uiState.totalTokens != null) {
+          val modeLabel = when (uiState.lastTokensModeCompression) {
+            true -> " (со сжатием)"
+            false -> " (без сжатия)"
+            null -> ""
+          }
           Text(
-            text = "Токенов: " + listOfNotNull(
+            text = "Токенов$modeLabel: " + listOfNotNull(
               uiState.promptTokens?.let { "запрос $it" },
               uiState.completionTokens?.let { "ответ $it" },
               uiState.totalTokens?.let { "всего $it" }
