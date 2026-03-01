@@ -23,11 +23,19 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -37,12 +45,16 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import android.widget.Toast
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.aiadventchallenge.BuildConfig
 import com.example.aiadventchallenge.domain.agent.AgentMessage
 import com.example.aiadventchallenge.domain.agent.AgentRole
+import com.example.aiadventchallenge.domain.agent.ContextStrategy
+import com.example.aiadventchallenge.domain.agent.displayName
 import com.example.aiadventchallenge.ui.components.LoadingOverlay
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AgentScreen(
   modifier: Modifier = Modifier,
@@ -97,62 +109,62 @@ fun AgentScreen(
         }
       }
 
-      Spacer(modifier = Modifier.height(8.dp))
+      Spacer(modifier = Modifier.height(4.dp))
 
-      Column(
-        modifier = Modifier
-          .fillMaxWidth()
-          .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-      ) {
+      Text(
+        text = "Стратегия: ${uiState.contextStrategy.displayName()}",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+      )
+
+      if (uiState.contextStrategy == ContextStrategy.StickyFacts) {
+        Spacer(modifier = Modifier.height(4.dp))
+        Column(
+          modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+            .padding(8.dp)
+        ) {
+          Text(
+            text = "Факты из диалога",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+          )
+          Spacer(modifier = Modifier.height(4.dp))
+          Text(
+            text = uiState.facts.ifBlank { "(пока нет извлечённых фактов)" },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface
+          )
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+      }
+
+      if (uiState.contextStrategy == ContextStrategy.Branching && uiState.branches.isNotEmpty()) {
+        Spacer(modifier = Modifier.height(4.dp))
         Row(
           modifier = Modifier.fillMaxWidth(),
           verticalAlignment = Alignment.CenterVertically,
-          horizontalArrangement = Arrangement.SpaceBetween
+          horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-          Text(
-            text = "Сжатие контекста",
-            style = MaterialTheme.typography.bodyMedium
-          )
-          Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-              text = if (uiState.useCompression) "Со сжатием" else "Без сжатия",
-              style = MaterialTheme.typography.bodySmall,
-              color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Switch(
-              checked = uiState.useCompression,
-              onCheckedChange = viewModel::setUseCompression,
-              enabled = !uiState.isLoading
+          uiState.branches.forEach { branch ->
+            val selected = branch.id == uiState.currentBranchId
+            FilterChip(
+              selected = selected,
+              onClick = { viewModel.switchBranch(branch.id) },
+              label = { Text(branch.name) }
             )
           }
-        }
-        if (uiState.useCompression) {
-          Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-          ) {
-            Text(
-              text = "Хранить полных сообщений:",
-              style = MaterialTheme.typography.bodySmall
-            )
-            listOf(5, 10, 20).forEach { n ->
-              OutlinedButton(
-                onClick = { viewModel.setLastN(n) },
-                enabled = !uiState.isLoading,
-                modifier = Modifier.height(28.dp),
-                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
-              ) {
-                Text(
-                  text = if (n == uiState.lastN) "$n ✓" else "$n",
-                  style = MaterialTheme.typography.labelSmall
-                )
-              }
+          if (uiState.branches.size < 2) {
+            OutlinedButton(
+              onClick = viewModel::openCreateBranchDialog,
+              enabled = !uiState.isLoading && uiState.messages.isNotEmpty()
+            ) {
+              Text("Создать ветку")
             }
           }
         }
+        Spacer(modifier = Modifier.height(4.dp))
       }
 
       Spacer(modifier = Modifier.height(8.dp))
@@ -199,6 +211,12 @@ fun AgentScreen(
           horizontalArrangement = Arrangement.End,
           verticalAlignment = Alignment.CenterVertically
         ) {
+          IconButton(
+            onClick = viewModel::openSettingsSheet,
+            enabled = !uiState.isLoading
+          ) {
+            Icon(Icons.Filled.Settings, contentDescription = "Настройки агента")
+          }
           if (BuildConfig.DEBUG) {
             OutlinedButton(
               onClick = viewModel::sendContextOverflowTest,
@@ -242,6 +260,116 @@ fun AgentScreen(
     }
 
     LoadingOverlay(visible = uiState.isLoading)
+
+    if (uiState.settingsSheetOpen) {
+      val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+      ModalBottomSheet(
+        onDismissRequest = viewModel::closeSettingsSheet,
+        sheetState = sheetState
+      ) {
+        AgentSettingsSheetContent(
+          contextStrategy = uiState.contextStrategy,
+          lastN = uiState.lastN,
+          onStrategySelected = viewModel::setContextStrategy,
+          onLastNSelected = viewModel::setLastN,
+          onSave = viewModel::closeSettingsSheet
+        )
+      }
+    }
+
+    if (uiState.showCreateBranchDialog) {
+      AlertDialog(
+        onDismissRequest = viewModel::dismissCreateBranchDialog,
+        title = { Text("Создать ветку") },
+        text = {
+          Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+              text = "Введите имя новой ветки:",
+              style = MaterialTheme.typography.bodyMedium
+            )
+            OutlinedTextField(
+              value = uiState.createBranchNameInput,
+              onValueChange = viewModel::setCreateBranchNameInput,
+              modifier = Modifier.fillMaxWidth(),
+              label = { Text("Имя ветки") },
+              singleLine = true
+            )
+          }
+        },
+        confirmButton = {
+          Button(
+            onClick = { viewModel.createBranch(uiState.createBranchNameInput) }
+          ) {
+            Text("Создать")
+          }
+        },
+        dismissButton = {
+          TextButton(onClick = viewModel::dismissCreateBranchDialog) {
+            Text("Отмена")
+          }
+        }
+      )
+    }
+  }
+}
+
+@Composable
+private fun AgentSettingsSheetContent(
+  contextStrategy: ContextStrategy,
+  lastN: Int,
+  onStrategySelected: (ContextStrategy) -> Unit,
+  onLastNSelected: (Int) -> Unit,
+  onSave: () -> Unit
+) {
+  Column(
+    modifier = Modifier
+      .fillMaxWidth()
+      .padding(horizontal = 16.dp)
+      .padding(bottom = 32.dp),
+    verticalArrangement = Arrangement.spacedBy(16.dp)
+  ) {
+    Text(
+      text = "Стратегия контекста",
+      style = MaterialTheme.typography.titleMedium
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+      ContextStrategy.values().toList().chunked(2).forEach { rowStrategies ->
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+          rowStrategies.forEach { strategy ->
+            FilterChip(
+              selected = contextStrategy == strategy,
+              onClick = { onStrategySelected(strategy) },
+              label = { Text(strategy.displayName()) }
+            )
+          }
+        }
+      }
+    }
+    Text(
+      text = "Хранить полных сообщений (N)",
+      style = MaterialTheme.typography.titleMedium
+    )
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+      listOf(5, 10, 20).forEach { n ->
+        OutlinedButton(
+          onClick = { onLastNSelected(n) }
+        ) {
+          Text(if (n == lastN) "$n ✓" else "$n")
+        }
+      }
+    }
+    Button(
+      onClick = onSave,
+      modifier = Modifier.fillMaxWidth()
+    ) {
+      Text("Сохранить")
+    }
   }
 }
 

@@ -67,6 +67,33 @@ class ChatRepository {
       .create(OpenAiApi::class.java)
   }
 
+  /** Извлечение/обновление фактов из диалога (Sticky Facts). Та же модель, без лимита токенов. */
+  suspend fun extractOrUpdateFacts(currentFacts: String, messages: List<AgentMessage>): Result<String> =
+    withContext(Dispatchers.IO) {
+      val dialogText = messages.joinToString("\n") { msg ->
+        val prefix = when (msg.role) {
+          AgentRole.User -> "Пользователь"
+          AgentRole.Assistant -> "Агент"
+        }
+        "$prefix: ${msg.text}"
+      }
+      val userContent = buildString {
+        append("Текущие факты:\n")
+        append(if (currentFacts.isNotBlank()) currentFacts else "(пока нет)")
+        append("\n\nДиалог:\n")
+        append(dialogText)
+        append("\n\nИзвлеки и обнови ключевые факты из диалога: цели, ограничения, предпочтения, решения. Выведи текстом (формат ключ: значение). Только факты, без пояснений.")
+      }
+      sendWithMessages(
+        messages = listOf(
+          ChatMessage(role = "system", content = "Ты извлекаешь факты из диалога. Выводи только обновлённый список фактов в формате ключ: значение."),
+          ChatMessage(role = "user", content = userContent)
+        ),
+        maxTokens = null,
+        stopPhrases = null
+      ).map { it.content.trim() }
+    }
+
   /** Суммаризация блока диалога (до 10 сообщений) для сжатия контекста. Та же модель, что и чат. */
   suspend fun summarizeDialog(messages: List<AgentMessage>): Result<String> = withContext(Dispatchers.IO) {
     val dialogText = messages.joinToString("\n") { msg ->

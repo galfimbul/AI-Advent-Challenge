@@ -13,9 +13,21 @@ data class AgentMessage(
   val text: String
 )
 
+/** Информация о ветке диалога (Branching). */
+data class BranchInfo(
+  val id: Long,
+  val name: String
+)
+
 data class AgentDialogState(
   val summaries: List<String> = emptyList(),
-  val messages: List<AgentMessage> = emptyList()
+  val messages: List<AgentMessage> = emptyList(),
+  /** Текстовый блок фактов (StickyFacts). */
+  val facts: String = "",
+  /** Текущая ветка (Branching). */
+  val currentBranchId: Long = 0L,
+  /** Список веток (id, name) для переключателя. */
+  val branches: List<BranchInfo> = emptyList()
 )
 
 data class AgentResponse(
@@ -36,7 +48,7 @@ class SimpleAgent(
   suspend fun process(
     dialog: AgentDialogState,
     userRequest: String,
-    useCompression: Boolean = false,
+    contextStrategy: ContextStrategy = ContextStrategy.SlidingWindow,
     lastN: Int = 10,
     forceContextOverflow: Boolean = false
   ): Result<AgentResponse> {
@@ -46,51 +58,18 @@ class SimpleAgent(
     }
 
     val historyText = when {
-      forceContextOverflow -> {
-        buildString {
-          dialog.messages.forEach { msg ->
-            val prefix = when (msg.role) {
-              AgentRole.User -> "Пользователь"
-              AgentRole.Assistant -> "Агент"
-            }
-            append(prefix).append(": ").append(msg.text).append('\n')
-          }
-          val chunk = " заполнение контекста для теста. "
-          repeat(20_000) { append(chunk) }
-        }
-      }
-      useCompression -> {
-        val lastMessages = dialog.messages.takeLast(lastN.coerceAtLeast(1))
-        buildString {
-          if (dialog.summaries.isNotEmpty()) {
-            append("Краткое содержание более ранней части диалога:\n")
-            append(dialog.summaries.joinToString("\n\n"))
-            append("\n\n")
-          }
-          append("Актуальная часть диалога:\n")
-          lastMessages.forEach { msg ->
-            val prefix = when (msg.role) {
-              AgentRole.User -> "Пользователь"
-              AgentRole.Assistant -> "Агент"
-            }
-            append(prefix).append(": ").append(msg.text).append('\n')
-          }
-        }.ifBlank { "(пока нет сообщений)" }
-      }
-      else -> {
-        buildString {
-          dialog.messages.forEach { msg ->
-            val prefix = when (msg.role) {
-              AgentRole.User -> "Пользователь"
-              AgentRole.Assistant -> "Агент"
-            }
-            append(prefix).append(": ").append(msg.text).append('\n')
-          }
-        }.ifBlank { "(пока нет сообщений)" }
-      }
+      forceContextOverflow -> buildOverflowHistory(dialog.messages)
+      contextStrategy == ContextStrategy.SlidingWindow -> buildMessagesBlock(dialog.messages.takeLast(lastN.coerceAtLeast(1)))
+      contextStrategy == ContextStrategy.StickyFacts -> buildFactsAndMessages(dialog.facts, dialog.messages.takeLast(lastN.coerceAtLeast(1)))
+      contextStrategy == ContextStrategy.Branching -> buildMessagesBlock(dialog.messages)
+      contextStrategy == ContextStrategy.Summary -> buildSummaryAndMessages(dialog.summaries, dialog.messages.takeLast(lastN.coerceAtLeast(1)))
+      else -> buildMessagesBlock(dialog.messages)
     }
 
     val prompt = buildString {
+      if (contextStrategy == ContextStrategy.StickyFacts) {
+        append("Учитывай блок «Факты» как источник целей, ограничений и договорённостей; не противоречь им в ответе.\n\n")
+      }
       append("История диалога между пользователем и агентом:\n")
       append(historyText)
       append("\n\nНовый запрос пользователя:\n")
@@ -108,10 +87,49 @@ class SimpleAgent(
         AgentMessage(AgentRole.Assistant, chatResponse.content)
       AgentResponse(
         reply = chatResponse.content,
-        dialog = AgentDialogState(summaries = dialog.summaries, messages = newMessages),
+        dialog = dialog.copy(messages = newMessages),
         raw = chatResponse
       )
     }
   }
+
+  private fun buildOverflowHistory(messages: List<AgentMessage>): String = buildString {
+    messages.forEach { msg ->
+      val prefix = when (msg.role) {
+        AgentRole.User -> "Пользователь"
+        AgentRole.Assistant -> "Агент"
+      }
+      append(prefix).append(": ").append(msg.text).append('\n')
+    }
+    val chunk = " заполнение контекста для теста. "
+    repeat(20_000) { append(chunk) }
+  }
+
+  private fun buildMessagesBlock(messages: List<AgentMessage>): String = buildString {
+    messages.forEach { msg ->
+      val prefix = when (msg.role) {
+        AgentRole.User -> "Пользователь"
+        AgentRole.Assistant -> "Агент"
+      }
+      append(prefix).append(": ").append(msg.text).append('\n')
+    }
+  }.ifBlank { "(пока нет сообщений)" }
+
+  private fun buildFactsAndMessages(facts: String, messages: List<AgentMessage>): String = buildString {
+    append("Факты из диалога (цели, ограничения, договорённости):\n")
+    append(if (facts.isNotBlank()) facts else "(пока нет извлечённых фактов)")
+    append("\n\nПоследние сообщения:\n")
+    append(buildMessagesBlock(messages))
+  }
+
+  private fun buildSummaryAndMessages(summaries: List<String>, messages: List<AgentMessage>): String = buildString {
+    if (summaries.isNotEmpty()) {
+      append("Краткое содержание более ранней части диалога:\n")
+      append(summaries.joinToString("\n\n"))
+      append("\n\n")
+    }
+    append("Актуальная часть диалога:\n")
+    append(buildMessagesBlock(messages))
+  }.ifBlank { "(пока нет сообщений)" }
 }
 

@@ -9,6 +9,7 @@ import com.example.aiadventchallenge.data.agent.AgentDialogStorage
 import com.example.aiadventchallenge.domain.agent.AgentDialogState
 import com.example.aiadventchallenge.domain.agent.AgentMessage
 import com.example.aiadventchallenge.domain.agent.AgentRole
+import com.example.aiadventchallenge.domain.agent.ContextStrategy
 import com.example.aiadventchallenge.domain.agent.SimpleAgent
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -37,21 +38,21 @@ class AgentViewModel(
   init {
     viewModelScope.launch {
       try {
-        dialogState = storage.load()
-        _uiState.value = _uiState.value.copy(messages = dialogState.messages)
-      } catch (e: Exception) {
-        Log.e(LOG_TAG, "Failed to load dialog", e)
-      }
-    }
-    viewModelScope.launch {
-      try {
         val settings = compressionPreferences.getSettings()
         _uiState.value = _uiState.value.copy(
-          useCompression = settings.useCompression,
-          lastN = settings.lastN
+          contextStrategy = settings.contextStrategy,
+          lastN = settings.lastN,
+          useCompression = settings.useCompression
+        )
+        dialogState = storage.load(_uiState.value.currentBranchId)
+        _uiState.value = _uiState.value.copy(
+          messages = dialogState.messages,
+          branches = dialogState.branches,
+          currentBranchId = dialogState.currentBranchId,
+          facts = dialogState.facts
         )
       } catch (e: Exception) {
-        Log.e(LOG_TAG, "Failed to load compression settings", e)
+        Log.e(LOG_TAG, "Failed to load dialog or settings", e)
       }
     }
   }
@@ -64,12 +65,31 @@ class AgentViewModel(
     val request = _uiState.value.request.trim()
     if (request.isEmpty()) return
 
-    val useCompression = _uiState.value.useCompression
+    val contextStrategy = _uiState.value.contextStrategy
     val lastN = _uiState.value.lastN
 
     _uiState.value = _uiState.value.copy(isLoading = true, error = null)
     viewModelScope.launch {
-      agent.process(dialogState, request, useCompression = useCompression, lastN = lastN)
+      var stateToSend = dialogState
+      if (contextStrategy == ContextStrategy.StickyFacts) {
+        _uiState.value = _uiState.value.copy(toastMessage = "Обновление фактов…")
+        val messagesWithUser = dialogState.messages + AgentMessage(AgentRole.User, request)
+        repository.extractOrUpdateFacts(dialogState.facts, messagesWithUser)
+          .onSuccess { newFacts ->
+            storage.saveFacts(newFacts)
+            stateToSend = dialogState.copy(facts = newFacts)
+            _uiState.value = _uiState.value.copy(facts = newFacts)
+          }
+          .onFailure { e ->
+            _uiState.value = _uiState.value.copy(
+              isLoading = false,
+              error = "Ошибка извлечения фактов: ${e.message}",
+              toastMessage = null
+            )
+            return@launch
+          }
+      }
+      agent.process(stateToSend, request, contextStrategy = contextStrategy, lastN = lastN)
         .onSuccess { agentResponse ->
           dialogState = agentResponse.dialog
           _uiState.value = _uiState.value.copy(
@@ -80,11 +100,12 @@ class AgentViewModel(
             promptTokens = agentResponse.raw.promptTokens,
             completionTokens = agentResponse.raw.completionTokens,
             totalTokens = agentResponse.raw.totalTokens,
-            lastTokensModeCompression = useCompression
+            lastTokensModeCompression = (contextStrategy == ContextStrategy.Summary),
+            facts = agentResponse.dialog.facts
           )
           try {
             storage.save(dialogState)
-            if (useCompression) {
+            if (contextStrategy == ContextStrategy.Summary) {
               ensureSummaries(dialogState)
             }
           } catch (e: Exception) {
@@ -143,13 +164,13 @@ class AgentViewModel(
     _uiState.value = _uiState.value.copy(toastMessage = null)
   }
 
-  fun setUseCompression(value: Boolean) {
-    _uiState.value = _uiState.value.copy(useCompression = value)
+  fun setContextStrategy(value: ContextStrategy) {
+    _uiState.value = _uiState.value.copy(contextStrategy = value, useCompression = (value == ContextStrategy.Summary))
     viewModelScope.launch {
       try {
-        compressionPreferences.setUseCompression(value)
+        compressionPreferences.setContextStrategy(value)
       } catch (e: Exception) {
-        Log.e(LOG_TAG, "Failed to save useCompression", e)
+        Log.e(LOG_TAG, "Failed to save contextStrategy", e)
       }
     }
   }
@@ -166,11 +187,82 @@ class AgentViewModel(
     }
   }
 
+  fun openCreateBranchDialog() {
+    _uiState.value = _uiState.value.copy(
+      showCreateBranchDialog = true,
+      createBranchNameInput = "Ветка 2"
+    )
+  }
+
+  fun dismissCreateBranchDialog() {
+    _uiState.value = _uiState.value.copy(showCreateBranchDialog = false)
+  }
+
+  fun setCreateBranchNameInput(value: String) {
+    _uiState.value = _uiState.value.copy(createBranchNameInput = value)
+  }
+
+  fun switchBranch(branchId: Long) {
+    if (_uiState.value.currentBranchId == branchId) return
+    viewModelScope.launch {
+      try {
+        dialogState = storage.load(branchId)
+        _uiState.value = _uiState.value.copy(
+          messages = dialogState.messages,
+          currentBranchId = dialogState.currentBranchId,
+          facts = dialogState.facts
+        )
+      } catch (e: Exception) {
+        Log.e(LOG_TAG, "Failed to switch branch", e)
+      }
+    }
+  }
+
+  fun createBranch(branchName: String) {
+    if (_uiState.value.branches.size >= 2) return
+    val lastIndex = dialogState.messages.size - 1
+    if (lastIndex < 0) return
+    val name = branchName.trim().ifBlank { "Ветка 2" }
+    viewModelScope.launch {
+      try {
+        val newId = storage.createBranch(
+          currentBranchId = _uiState.value.currentBranchId,
+          lastMessageIndex = lastIndex,
+          secondBranchName = name
+        )
+        dialogState = storage.load(newId)
+        _uiState.value = _uiState.value.copy(
+          messages = dialogState.messages,
+          currentBranchId = dialogState.currentBranchId,
+          branches = dialogState.branches,
+          showCreateBranchDialog = false
+        )
+        _uiState.value = _uiState.value.copy(toastMessage = "Ветка «$name» создана")
+      } catch (e: Exception) {
+        Log.e(LOG_TAG, "Failed to create branch", e)
+        _uiState.value = _uiState.value.copy(error = "Не удалось создать ветку: ${e.message}")
+      }
+    }
+  }
+
+  fun openSettingsSheet() {
+    _uiState.value = _uiState.value.copy(settingsSheetOpen = true)
+  }
+
+  fun closeSettingsSheet() {
+    _uiState.value = _uiState.value.copy(settingsSheetOpen = false)
+  }
+
+  fun setUseCompression(value: Boolean) {
+    val strategy = if (value) ContextStrategy.Summary else ContextStrategy.SlidingWindow
+    setContextStrategy(strategy)
+  }
+
   /** Тест превышения контекста: отправляет запрос с искусственно раздутым промптом. Только для debug. */
   fun sendContextOverflowTest() {
     _uiState.value = _uiState.value.copy(isLoading = true, error = null)
     viewModelScope.launch {
-      agent.process(dialogState, "Тест: превышение контекста", forceContextOverflow = true)
+      agent.process(dialogState, "Тест: превышение контекста", contextStrategy = ContextStrategy.SlidingWindow, lastN = 10, forceContextOverflow = true)
         .onSuccess { agentResponse ->
           dialogState = agentResponse.dialog
           _uiState.value = _uiState.value.copy(
@@ -189,7 +281,7 @@ class AgentViewModel(
         }
         .onFailure { e ->
           val testMsg = AgentMessage(AgentRole.User, "Тест: превышение контекста")
-          dialogState = AgentDialogState(summaries = dialogState.summaries, messages = dialogState.messages + testMsg)
+          dialogState = dialogState.copy(messages = dialogState.messages + testMsg)
           _uiState.value = _uiState.value.copy(
             isLoading = false,
             messages = dialogState.messages,
@@ -208,8 +300,17 @@ class AgentViewModel(
     viewModelScope.launch {
       try {
         storage.clear()
-        dialogState = AgentDialogState()
-        _uiState.value = _uiState.value.copy(messages = emptyList())
+        dialogState = storage.load(1L)
+        _uiState.value = _uiState.value.copy(
+          messages = dialogState.messages,
+          branches = dialogState.branches,
+          currentBranchId = 1L,
+          facts = "",
+          promptTokens = null,
+          completionTokens = null,
+          totalTokens = null,
+          lastTokensModeCompression = null
+        )
       } catch (e: Exception) {
         Log.e(LOG_TAG, "Failed to clear dialog", e)
       }

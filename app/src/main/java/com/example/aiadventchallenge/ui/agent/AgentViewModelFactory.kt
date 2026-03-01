@@ -17,7 +17,12 @@ class AgentViewModelFactory(
   override fun <T : ViewModel> create(modelClass: Class<T>): T {
     val app = context.applicationContext as AiAdventChallengeApplication
     val db = app.database
-    val storage = AgentDialogStorage(db.agentMessageDao(), db.agentSummaryDao())
+    val storage = AgentDialogStorage(
+      db.agentMessageDao(),
+      db.agentSummaryDao(),
+      db.agentFactsDao(),
+      db.agentBranchDao()
+    )
     val repository = ChatRepository()
     val agent = SimpleAgent(repository)
     val compressionPreferences = AgentCompressionPreferences(context)
