@@ -8,11 +8,16 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -22,6 +27,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
@@ -40,8 +46,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import android.widget.Toast
@@ -50,6 +62,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.aiadventchallenge.BuildConfig
 import com.example.aiadventchallenge.domain.agent.AgentMessage
 import com.example.aiadventchallenge.domain.agent.AgentRole
+import com.example.aiadventchallenge.data.agent.TaskMemoryItem
 import com.example.aiadventchallenge.domain.agent.ContextStrategy
 import com.example.aiadventchallenge.domain.agent.displayName
 import com.example.aiadventchallenge.ui.components.LoadingOverlay
@@ -98,7 +111,7 @@ fun AgentScreen(
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
           OutlinedButton(
-            onClick = viewModel::clearDialog,
+            onClick = viewModel::openClearConfirmDialog,
             enabled = !uiState.isLoading && uiState.messages.isNotEmpty()
           ) {
             Text("Очистить историю")
@@ -113,6 +126,21 @@ fun AgentScreen(
 
       Text(
         text = "Стратегия: ${uiState.contextStrategy.displayName()}",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+      )
+
+      val longTermLabel = if (uiState.longTermMemory.isNotBlank()) "заполнена" else "пуста"
+      val loadedTaskName = uiState.loadedTaskId?.let { id ->
+        uiState.taskMemories.firstOrNull { it.id == id }?.name
+      }
+      Text(
+        text = "Долговременная память: $longTermLabel",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+      )
+      Text(
+        text = if (loadedTaskName != null) "Задача в диалоге: $loadedTaskName" else "Задача в диалоге: не загружена",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant
       )
@@ -186,7 +214,10 @@ fun AgentScreen(
           }
         }
         itemsIndexed(uiState.messages, key = { index, _ -> "msg_$index" }) { _, message ->
-          ChatBubble(message = message)
+          ChatBubble(
+            message = message,
+            onLongPress = { viewModel.setLongTapMessage(message.text) }
+          )
         }
       }
 
@@ -263,17 +294,42 @@ fun AgentScreen(
 
     if (uiState.settingsSheetOpen) {
       val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+      val maxSheetHeight = (LocalConfiguration.current.screenHeightDp * 0.8f).dp
       ModalBottomSheet(
         onDismissRequest = viewModel::closeSettingsSheet,
         sheetState = sheetState
       ) {
-        AgentSettingsSheetContent(
-          contextStrategy = uiState.contextStrategy,
-          lastN = uiState.lastN,
-          onStrategySelected = viewModel::setContextStrategy,
-          onLastNSelected = viewModel::setLastN,
-          onSave = viewModel::closeSettingsSheet
-        )
+        Box(
+          modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(max = maxSheetHeight)
+            .windowInsetsPadding(WindowInsets.systemBars)
+        ) {
+          AgentSettingsSheetContent(
+            modifier = Modifier.fillMaxSize(),
+            contextStrategy = uiState.contextStrategy,
+            lastN = uiState.lastN,
+            longTermMemory = uiState.longTermMemory,
+            onSaveLongTermMemory = viewModel::saveLongTermMemory,
+            onClearLongTermMemory = viewModel::clearLongTermMemory,
+            taskMemories = uiState.taskMemories,
+            loadedTaskId = uiState.loadedTaskId,
+            taskEditorId = uiState.taskEditorId,
+            taskEditorName = uiState.taskEditorName,
+            taskEditorContent = uiState.taskEditorContent,
+            onOpenTaskEditor = viewModel::openTaskEditor,
+            onTaskEditorNameChange = viewModel::updateTaskEditorName,
+            onTaskEditorContentChange = viewModel::updateTaskEditorContent,
+            onSaveTaskEditor = viewModel::saveTaskEditor,
+            onDeleteTaskMemory = viewModel::deleteTaskMemory,
+            onLoadTask = viewModel::loadTaskIntoDialog,
+            onUnloadTask = viewModel::unloadTaskFromDialog,
+            onClearTaskMemories = viewModel::clearTaskMemories,
+            onAddTaskMemory = viewModel::saveTaskMemory,
+            onStrategySelected = viewModel::setContextStrategy,
+            onLastNSelected = viewModel::setLastN
+          )
+        }
       }
     }
 
@@ -310,35 +366,262 @@ fun AgentScreen(
         }
       )
     }
+
+    if (uiState.longTapMessageText != null) {
+      val messageText = uiState.longTapMessageText!!
+      AlertDialog(
+        onDismissRequest = { viewModel.setLongTapMessage(null) },
+        confirmButton = { },
+        title = { Text("Извлечь факты и сохранить") },
+        text = {
+          Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+              text = "Извлечь факты из сообщения и добавить в:",
+              style = MaterialTheme.typography.bodyMedium
+            )
+            Button(
+              onClick = { viewModel.addFactsToLongTermFromMessage(messageText) },
+              modifier = Modifier.fillMaxWidth()
+            ) {
+              Text("В долговременную память")
+            }
+            for (task in uiState.taskMemories) {
+              OutlinedButton(
+                onClick = { viewModel.addFactsToTaskFromMessage(task.id, messageText) },
+                modifier = Modifier.fillMaxWidth()
+              ) {
+                Text("В задачу: ${task.name}")
+              }
+            }
+            if (uiState.taskMemories.isEmpty()) {
+              Text(
+                text = "Нет задач. Добавьте в настройках.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+              )
+            }
+          }
+        },
+        dismissButton = {
+          TextButton(onClick = { viewModel.setLongTapMessage(null) }) {
+            Text("Отмена")
+          }
+        }
+      )
+    }
+
+    if (uiState.showClearConfirmDialog) {
+      AlertDialog(
+        onDismissRequest = viewModel::dismissClearConfirmDialog,
+        title = { Text("Очистить историю") },
+        text = {
+          Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(
+              text = "Удалить все сообщения текущего диалога? Долговременная память сохранится.",
+              style = MaterialTheme.typography.bodyMedium
+            )
+            Row(
+              modifier = Modifier.fillMaxWidth(),
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              Checkbox(
+                checked = uiState.clearDialogAlsoTaskMemory,
+                onCheckedChange = { viewModel.setClearDialogAlsoTaskMemory(it) }
+              )
+              Text(
+                text = "Также очистить память задачи",
+                style = MaterialTheme.typography.bodyMedium
+              )
+            }
+          }
+        },
+        confirmButton = {
+          Button(onClick = viewModel::confirmClearDialog) {
+            Text("Очистить")
+          }
+        },
+        dismissButton = {
+          TextButton(onClick = viewModel::dismissClearConfirmDialog) {
+            Text("Отмена")
+          }
+        }
+      )
+    }
   }
 }
 
 @Composable
 private fun AgentSettingsSheetContent(
+  modifier: Modifier = Modifier,
   contextStrategy: ContextStrategy,
   lastN: Int,
+  longTermMemory: String,
+  onSaveLongTermMemory: (String) -> Unit,
+  onClearLongTermMemory: () -> Unit,
+  taskMemories: List<TaskMemoryItem>,
+  loadedTaskId: Long?,
+  taskEditorId: Long?,
+  taskEditorName: String,
+  taskEditorContent: String,
+  onOpenTaskEditor: (Long) -> Unit,
+  onTaskEditorNameChange: (String) -> Unit,
+  onTaskEditorContentChange: (String) -> Unit,
+  onSaveTaskEditor: () -> Unit,
+  onDeleteTaskMemory: (Long) -> Unit,
+  onLoadTask: (Long) -> Unit,
+  onUnloadTask: () -> Unit,
+  onClearTaskMemories: () -> Unit,
+  onAddTaskMemory: (String, String) -> Unit,
   onStrategySelected: (ContextStrategy) -> Unit,
-  onLastNSelected: (Int) -> Unit,
-  onSave: () -> Unit
+  onLastNSelected: (Int) -> Unit
 ) {
+  val focusManager = LocalFocusManager.current
+  var longTermInput by remember { mutableStateOf(longTermMemory) }
+  var newTaskName by remember { mutableStateOf("") }
+  var newTaskContent by remember { mutableStateOf("") }
+  LaunchedEffect(longTermMemory) { longTermInput = longTermMemory }
+
   Column(
-    modifier = Modifier
+    modifier = modifier
       .fillMaxWidth()
       .padding(horizontal = 16.dp)
-      .padding(bottom = 32.dp),
+      .padding(bottom = 32.dp)
+      .verticalScroll(rememberScrollState()),
     verticalArrangement = Arrangement.spacedBy(16.dp)
   ) {
+    Text(
+      text = "Долговременная память",
+      style = MaterialTheme.typography.titleMedium
+    )
+    OutlinedTextField(
+      value = longTermInput,
+      onValueChange = { longTermInput = it },
+      modifier = Modifier.fillMaxWidth(),
+      label = { Text("Профиль, решения, знания") },
+      minLines = 2,
+      maxLines = 5
+    )
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+      OutlinedButton(
+        onClick = {
+          onSaveLongTermMemory(longTermInput)
+          focusManager.clearFocus()
+        }
+      ) {
+        Text("Сохранить")
+      }
+      OutlinedButton(onClick = { onClearLongTermMemory(); focusManager.clearFocus() }) {
+        Text("Очистить")
+      }
+    }
+
+    Text(
+      text = "Память задачи",
+      style = MaterialTheme.typography.titleMedium
+    )
+    if (taskMemories.isNotEmpty()) {
+      Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        for (task in taskMemories) {
+          FilterChip(
+            selected = taskEditorId == task.id,
+            onClick = { onOpenTaskEditor(task.id) },
+            label = { Text(task.name) }
+          )
+        }
+      }
+    }
+    if (taskEditorId != null) {
+      Spacer(modifier = Modifier.height(4.dp))
+      Text(
+        text = "Редактирование задачи",
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+      )
+      OutlinedTextField(
+        value = taskEditorName,
+        onValueChange = onTaskEditorNameChange,
+        modifier = Modifier.fillMaxWidth(),
+        label = { Text("Имя") },
+        singleLine = true
+      )
+      OutlinedTextField(
+        value = taskEditorContent,
+        onValueChange = onTaskEditorContentChange,
+        modifier = Modifier.fillMaxWidth(),
+        label = { Text("Контент") },
+        minLines = 2,
+        maxLines = 6
+      )
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+      ) {
+        OutlinedButton(onClick = onSaveTaskEditor) {
+          Text("Сохранить изменения")
+        }
+        OutlinedButton(onClick = { onDeleteTaskMemory(taskEditorId) }) {
+          Text("Удалить")
+        }
+      }
+      if (loadedTaskId == taskEditorId) {
+        OutlinedButton(onClick = onUnloadTask) {
+          Text("Отключить задачу от диалога")
+        }
+      } else {
+        OutlinedButton(onClick = { onLoadTask(taskEditorId) }) {
+          Text("Загрузить задачу в диалог")
+        }
+      }
+    }
+    OutlinedTextField(
+      value = newTaskName,
+      onValueChange = { newTaskName = it },
+      modifier = Modifier.fillMaxWidth(),
+      label = { Text("Имя новой задачи") },
+      singleLine = true
+    )
+    OutlinedTextField(
+      value = newTaskContent,
+      onValueChange = { newTaskContent = it },
+      modifier = Modifier.fillMaxWidth(),
+      label = { Text("Содержимое (опционально)") },
+      minLines = 1,
+      maxLines = 3
+    )
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+      OutlinedButton(
+        onClick = {
+          onAddTaskMemory(newTaskName, newTaskContent)
+          newTaskName = ""
+          newTaskContent = ""
+        }
+      ) {
+        Text("Добавить задачу")
+      }
+      if (taskMemories.isNotEmpty()) {
+        OutlinedButton(onClick = onClearTaskMemories) {
+          Text("Очистить память задачи")
+        }
+      }
+    }
+
     Text(
       text = "Стратегия контекста",
       style = MaterialTheme.typography.titleMedium
     )
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-      ContextStrategy.values().toList().chunked(2).forEach { rowStrategies ->
+      for (rowStrategies in ContextStrategy.values().toList().chunked(2)) {
         Row(
           modifier = Modifier.fillMaxWidth(),
           horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-          rowStrategies.forEach { strategy ->
+          for (strategy in rowStrategies) {
             FilterChip(
               selected = contextStrategy == strategy,
               onClick = { onStrategySelected(strategy) },
@@ -364,23 +647,24 @@ private fun AgentSettingsSheetContent(
         }
       }
     }
-    Button(
-      onClick = onSave,
-      modifier = Modifier.fillMaxWidth()
-    ) {
-      Text("Сохранить")
-    }
   }
 }
 
 @Composable
 private fun ChatBubble(
   message: AgentMessage,
+  onLongPress: (() -> Unit)? = null,
   modifier: Modifier = Modifier
 ) {
   val isUser = message.role == AgentRole.User
   Row(
-    modifier = modifier.fillMaxWidth(),
+    modifier = modifier
+      .fillMaxWidth()
+      .then(
+        if (onLongPress != null) Modifier.pointerInput(Unit) {
+          detectTapGestures(onLongPress = { onLongPress() })
+        } else Modifier
+      ),
     horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
   ) {
     Box(

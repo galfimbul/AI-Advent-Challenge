@@ -19,4 +19,7 @@ interface AgentBranchDao {
 
   @Query("DELETE FROM agent_branches")
   suspend fun deleteAll()
+
+  @Query("UPDATE agent_branches SET loadedTaskId = :taskId WHERE id = :branchId")
+  suspend fun setLoadedTaskId(branchId: Long, taskId: Long?)
 }

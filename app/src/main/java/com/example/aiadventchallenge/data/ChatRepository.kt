@@ -67,6 +67,20 @@ class ChatRepository {
       .create(OpenAiApi::class.java)
   }
 
+  /** Извлечение фактов из произвольного текста (для команд памяти и long-tap). Один вызов LLM, без лимита токенов. */
+  suspend fun extractFactsFromText(text: String): Result<String> = withContext(Dispatchers.IO) {
+    if (text.isBlank()) return@withContext Result.success("")
+    val userContent = "Текст:\n$text\n\nИзвлеки ключевые факты: цели, ограничения, предпочтения, решения. Выведи только факты в формате ключ: значение. Без пояснений."
+    sendWithMessages(
+      messages = listOf(
+        ChatMessage(role = "system", content = "Ты извлекаешь факты из текста. Выводи только список фактов в формате ключ: значение."),
+        ChatMessage(role = "user", content = userContent)
+      ),
+      maxTokens = null,
+      stopPhrases = null
+    ).map { it.content.trim() }
+  }
+
   /** Извлечение/обновление фактов из диалога (Sticky Facts). Та же модель, без лимита токенов. */
   suspend fun extractOrUpdateFacts(currentFacts: String, messages: List<AgentMessage>): Result<String> =
     withContext(Dispatchers.IO) {

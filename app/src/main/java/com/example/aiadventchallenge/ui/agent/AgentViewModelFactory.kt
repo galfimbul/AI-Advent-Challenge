@@ -21,7 +21,9 @@ class AgentViewModelFactory(
       db.agentMessageDao(),
       db.agentSummaryDao(),
       db.agentFactsDao(),
-      db.agentBranchDao()
+      db.agentBranchDao(),
+      db.agentLongTermMemoryDao(),
+      db.agentTaskMemoryDao()
     )
     val repository = ChatRepository()
     val agent = SimpleAgent(repository)

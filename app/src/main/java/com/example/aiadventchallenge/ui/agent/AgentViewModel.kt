@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.aiadventchallenge.data.ChatRepository
 import com.example.aiadventchallenge.data.agent.AgentCompressionPreferences
 import com.example.aiadventchallenge.data.agent.AgentDialogStorage
+import com.example.aiadventchallenge.data.agent.TaskMemoryItem
 import com.example.aiadventchallenge.domain.agent.AgentDialogState
 import com.example.aiadventchallenge.domain.agent.AgentMessage
 import com.example.aiadventchallenge.domain.agent.AgentRole
@@ -45,11 +46,18 @@ class AgentViewModel(
           useCompression = settings.useCompression
         )
         dialogState = storage.load(_uiState.value.currentBranchId)
+        val longTerm = storage.getLongTermMemory()
+        val taskList = storage.getTaskMemories()
+        val restoredLoadedId = dialogState.loadedTaskId
+        val loadedId = restoredLoadedId?.takeIf { id -> taskList.any { it.id == id } }
         _uiState.value = _uiState.value.copy(
           messages = dialogState.messages,
           branches = dialogState.branches,
           currentBranchId = dialogState.currentBranchId,
-          facts = dialogState.facts
+          facts = dialogState.facts,
+          longTermMemory = longTerm,
+          taskMemories = taskList,
+          loadedTaskId = loadedId
         )
       } catch (e: Exception) {
         Log.e(LOG_TAG, "Failed to load dialog or settings", e)
@@ -64,6 +72,11 @@ class AgentViewModel(
   fun sendRequest() {
     val request = _uiState.value.request.trim()
     if (request.isEmpty()) return
+
+    if (request.startsWith("/")) {
+      handleMemoryCommand(request)
+      return
+    }
 
     val contextStrategy = _uiState.value.contextStrategy
     val lastN = _uiState.value.lastN
@@ -89,7 +102,16 @@ class AgentViewModel(
             return@launch
           }
       }
-      agent.process(stateToSend, request, contextStrategy = contextStrategy, lastN = lastN)
+      val longTerm = _uiState.value.longTermMemory
+      val taskMemory = _uiState.value.loadedTaskId?.let { id -> storage.getTaskMemoryContent(id) }
+      agent.process(
+        stateToSend,
+        request,
+        contextStrategy = contextStrategy,
+        lastN = lastN,
+        longTermMemory = longTerm,
+        taskMemory = taskMemory
+      )
         .onSuccess { agentResponse ->
           dialogState = agentResponse.dialog
           _uiState.value = _uiState.value.copy(
@@ -160,6 +182,91 @@ class AgentViewModel(
     }
   }
 
+  private fun handleMemoryCommand(input: String) {
+    val trimmed = input.trim()
+    when {
+      trimmed.equals("/help", ignoreCase = true) || trimmed.equals("/memory_help", ignoreCase = true) -> {
+        _uiState.value = _uiState.value.copy(
+          request = "",
+          toastMessage = "Команды: /add_long_term текст — факты в долговременную память; /add_task_memory текст — факты в загруженную задачу; /help — эта подсказка"
+        )
+      }
+      trimmed.startsWith("/add_long_term", ignoreCase = true) -> {
+        val text = trimmed.removePrefix("/add_long_term").trim()
+        if (text.isEmpty()) {
+          _uiState.value = _uiState.value.copy(toastMessage = "Укажите текст после команды: /add_long_term ваш текст")
+          return
+        }
+        viewModelScope.launch {
+          _uiState.value = _uiState.value.copy(isLoading = true, request = "", error = null)
+          repository.extractFactsFromText(text)
+            .onSuccess { facts ->
+              if (facts.isNotBlank()) {
+                storage.appendToLongTermMemory(facts)
+                _uiState.value = _uiState.value.copy(
+                  isLoading = false,
+                  longTermMemory = storage.getLongTermMemory(),
+                  toastMessage = "Факты добавлены в долговременную память"
+                )
+              } else {
+                _uiState.value = _uiState.value.copy(isLoading = false, toastMessage = "Не удалось извлечь факты")
+              }
+            }
+            .onFailure { e ->
+              _uiState.value = _uiState.value.copy(
+                isLoading = false,
+                error = "Ошибка извлечения фактов: ${e.message}"
+              )
+            }
+        }
+      }
+      trimmed.startsWith("/add_task_memory", ignoreCase = true) -> {
+        val text = trimmed.removePrefix("/add_task_memory").trim()
+        val loadedId = _uiState.value.loadedTaskId
+        if (loadedId == null) {
+          _uiState.value = _uiState.value.copy(
+            request = "",
+            toastMessage = "Сначала загрузите задачу в диалог (Настройки → Память задачи)"
+          )
+          return
+        }
+        if (text.isEmpty()) {
+          _uiState.value = _uiState.value.copy(toastMessage = "Укажите текст после команды: /add_task_memory ваш текст")
+          return
+        }
+        viewModelScope.launch {
+          _uiState.value = _uiState.value.copy(isLoading = true, request = "", error = null)
+          repository.extractFactsFromText(text)
+            .onSuccess { facts ->
+              if (facts.isNotBlank()) {
+                storage.appendToTaskMemory(loadedId, facts)
+                val updatedContent = storage.getTaskMemoryContent(loadedId)
+                _uiState.value = _uiState.value.copy(
+                  isLoading = false,
+                  taskEditorContent = if (_uiState.value.taskEditorId == loadedId) (updatedContent ?: _uiState.value.taskEditorContent) else _uiState.value.taskEditorContent,
+                  toastMessage = "Факты добавлены в память задачи"
+                )
+              } else {
+                _uiState.value = _uiState.value.copy(isLoading = false, toastMessage = "Не удалось извлечь факты")
+              }
+            }
+            .onFailure { e ->
+              _uiState.value = _uiState.value.copy(
+                isLoading = false,
+                error = "Ошибка извлечения фактов: ${e.message}"
+              )
+            }
+        }
+      }
+      else -> {
+        _uiState.value = _uiState.value.copy(
+          request = "",
+          toastMessage = "Неизвестная команда. Введите /help для списка команд."
+        )
+      }
+    }
+  }
+
   fun clearToastMessage() {
     _uiState.value = _uiState.value.copy(toastMessage = null)
   }
@@ -207,10 +314,14 @@ class AgentViewModel(
     viewModelScope.launch {
       try {
         dialogState = storage.load(branchId)
+        val taskList = _uiState.value.taskMemories
+        val restoredLoadedId = dialogState.loadedTaskId
+        val loadedId = restoredLoadedId?.takeIf { id -> taskList.any { it.id == id } }
         _uiState.value = _uiState.value.copy(
           messages = dialogState.messages,
           currentBranchId = dialogState.currentBranchId,
-          facts = dialogState.facts
+          facts = dialogState.facts,
+          loadedTaskId = loadedId
         )
       } catch (e: Exception) {
         Log.e(LOG_TAG, "Failed to switch branch", e)
@@ -247,6 +358,9 @@ class AgentViewModel(
 
   fun openSettingsSheet() {
     _uiState.value = _uiState.value.copy(settingsSheetOpen = true)
+    refreshLongTermMemory()
+    loadTaskMemories()
+    _uiState.value.loadedTaskId?.let { openTaskEditor(it) }
   }
 
   fun closeSettingsSheet() {
@@ -262,7 +376,7 @@ class AgentViewModel(
   fun sendContextOverflowTest() {
     _uiState.value = _uiState.value.copy(isLoading = true, error = null)
     viewModelScope.launch {
-      agent.process(dialogState, "Тест: превышение контекста", contextStrategy = ContextStrategy.SlidingWindow, lastN = 10, forceContextOverflow = true)
+      agent.process(dialogState, "Тест: превышение контекста", contextStrategy = ContextStrategy.SlidingWindow, lastN = 10, forceContextOverflow = true, longTermMemory = "", taskMemory = null)
         .onSuccess { agentResponse ->
           dialogState = agentResponse.dialog
           _uiState.value = _uiState.value.copy(
@@ -296,16 +410,36 @@ class AgentViewModel(
     }
   }
 
-  fun clearDialog() {
+  fun openClearConfirmDialog() {
+    _uiState.value = _uiState.value.copy(showClearConfirmDialog = true, clearDialogAlsoTaskMemory = false)
+  }
+
+  fun dismissClearConfirmDialog() {
+    _uiState.value = _uiState.value.copy(showClearConfirmDialog = false)
+  }
+
+  fun setClearDialogAlsoTaskMemory(value: Boolean) {
+    _uiState.value = _uiState.value.copy(clearDialogAlsoTaskMemory = value)
+  }
+
+  fun confirmClearDialog() {
+    val alsoTaskMemory = _uiState.value.clearDialogAlsoTaskMemory
     viewModelScope.launch {
       try {
         storage.clear()
+        if (alsoTaskMemory) {
+          storage.clearTaskMemories()
+        }
         dialogState = storage.load(1L)
+        val taskList = storage.getTaskMemories()
         _uiState.value = _uiState.value.copy(
+          showClearConfirmDialog = false,
           messages = dialogState.messages,
           branches = dialogState.branches,
           currentBranchId = 1L,
           facts = "",
+          taskMemories = taskList,
+          loadedTaskId = if (alsoTaskMemory) null else _uiState.value.loadedTaskId,
           promptTokens = null,
           completionTokens = null,
           totalTokens = null,
@@ -315,5 +449,226 @@ class AgentViewModel(
         Log.e(LOG_TAG, "Failed to clear dialog", e)
       }
     }
+  }
+
+  // --- Долговременная память ---
+
+  fun saveLongTermMemory(content: String) {
+    viewModelScope.launch {
+      try {
+        storage.saveLongTermMemory(content)
+        _uiState.value = _uiState.value.copy(
+          longTermMemory = storage.getLongTermMemory(),
+          toastMessage = "Долговременная память сохранена"
+        )
+      } catch (e: Exception) {
+        Log.e(LOG_TAG, "Failed to save long-term memory", e)
+      }
+    }
+  }
+
+  fun clearLongTermMemory() {
+    viewModelScope.launch {
+      try {
+        storage.saveLongTermMemory("")
+        _uiState.value = _uiState.value.copy(
+          longTermMemory = "",
+          toastMessage = "Долговременная память очищена"
+        )
+      } catch (e: Exception) {
+        Log.e(LOG_TAG, "Failed to clear long-term memory", e)
+      }
+    }
+  }
+
+  fun refreshLongTermMemory() {
+    viewModelScope.launch {
+      try {
+        _uiState.value = _uiState.value.copy(longTermMemory = storage.getLongTermMemory())
+      } catch (e: Exception) {
+        Log.e(LOG_TAG, "Failed to load long-term memory", e)
+      }
+    }
+  }
+
+  // --- Память задачи ---
+
+  fun loadTaskMemories() {
+    viewModelScope.launch {
+      try {
+        _uiState.value = _uiState.value.copy(taskMemories = storage.getTaskMemories())
+      } catch (e: Exception) {
+        Log.e(LOG_TAG, "Failed to load task memories", e)
+      }
+    }
+  }
+
+  fun loadTaskIntoDialog(taskId: Long) {
+    viewModelScope.launch {
+      try {
+        storage.saveLoadedTaskIdForBranch(_uiState.value.currentBranchId, taskId)
+      } catch (e: Exception) {
+        Log.e(LOG_TAG, "Failed to save loaded task for branch", e)
+      }
+    }
+    _uiState.value = _uiState.value.copy(loadedTaskId = taskId)
+  }
+
+  fun unloadTaskFromDialog() {
+    viewModelScope.launch {
+      try {
+        storage.saveLoadedTaskIdForBranch(_uiState.value.currentBranchId, null)
+      } catch (e: Exception) {
+        Log.e(LOG_TAG, "Failed to clear loaded task for branch", e)
+      }
+    }
+    _uiState.value = _uiState.value.copy(loadedTaskId = null)
+  }
+
+  fun openTaskEditor(taskId: Long) {
+    viewModelScope.launch {
+      try {
+        val name = _uiState.value.taskMemories.firstOrNull { it.id == taskId }?.name ?: "Задача"
+        val content = storage.getTaskMemoryContent(taskId) ?: ""
+        _uiState.value = _uiState.value.copy(
+          taskEditorId = taskId,
+          taskEditorName = name,
+          taskEditorContent = content
+        )
+      } catch (e: Exception) {
+        Log.e(LOG_TAG, "Failed to open task editor", e)
+      }
+    }
+  }
+
+  fun updateTaskEditorName(value: String) {
+    _uiState.value = _uiState.value.copy(taskEditorName = value)
+  }
+
+  fun updateTaskEditorContent(value: String) {
+    _uiState.value = _uiState.value.copy(taskEditorContent = value)
+  }
+
+  fun saveTaskEditor() {
+    val id = _uiState.value.taskEditorId ?: return
+    val name = _uiState.value.taskEditorName.trim().ifBlank { "Задача" }
+    val content = _uiState.value.taskEditorContent
+    viewModelScope.launch {
+      try {
+        storage.updateTaskMemory(id, name, content)
+        val updatedList = storage.getTaskMemories()
+        _uiState.value = _uiState.value.copy(
+          taskMemories = updatedList,
+          toastMessage = "Память задачи сохранена"
+        )
+      } catch (e: Exception) {
+        Log.e(LOG_TAG, "Failed to save task editor", e)
+      }
+    }
+  }
+
+  fun saveTaskMemory(name: String, content: String) {
+    viewModelScope.launch {
+      try {
+        val newId = storage.saveTaskMemory(name.trim().ifBlank { "Задача" }, content)
+        _uiState.value = _uiState.value.copy(
+          taskMemories = storage.getTaskMemories(),
+          toastMessage = "Задача добавлена"
+        )
+        openTaskEditor(newId)
+      } catch (e: Exception) {
+        Log.e(LOG_TAG, "Failed to save task memory", e)
+      }
+    }
+  }
+
+  fun deleteTaskMemory(taskId: Long) {
+    viewModelScope.launch {
+      try {
+        storage.deleteTaskMemory(taskId)
+        val newList = storage.getTaskMemories()
+        _uiState.value = _uiState.value.copy(
+          taskMemories = newList,
+          loadedTaskId = if (_uiState.value.loadedTaskId == taskId) null else _uiState.value.loadedTaskId,
+          taskEditorId = if (_uiState.value.taskEditorId == taskId) null else _uiState.value.taskEditorId,
+          taskEditorName = if (_uiState.value.taskEditorId == taskId) "" else _uiState.value.taskEditorName,
+          taskEditorContent = if (_uiState.value.taskEditorId == taskId) "" else _uiState.value.taskEditorContent,
+          toastMessage = "Задача удалена"
+        )
+      } catch (e: Exception) {
+        Log.e(LOG_TAG, "Failed to delete task memory", e)
+      }
+    }
+  }
+
+  fun clearTaskMemories() {
+    viewModelScope.launch {
+      try {
+        storage.clearTaskMemories()
+        _uiState.value = _uiState.value.copy(
+          taskMemories = emptyList(),
+          loadedTaskId = null,
+          taskEditorId = null,
+          taskEditorName = "",
+          taskEditorContent = "",
+          toastMessage = "Память задачи очищена"
+        )
+      } catch (e: Exception) {
+        Log.e(LOG_TAG, "Failed to clear task memories", e)
+      }
+    }
+  }
+
+  /** Извлечь факты из текста сообщения и добавить в долговременную память (long-tap). */
+  fun addFactsToLongTermFromMessage(messageText: String) {
+    _uiState.value = _uiState.value.copy(longTapMessageText = null)
+    viewModelScope.launch {
+      _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+      repository.extractFactsFromText(messageText)
+        .onSuccess { facts ->
+          if (facts.isNotBlank()) {
+            storage.appendToLongTermMemory(facts)
+            _uiState.value = _uiState.value.copy(
+              isLoading = false,
+              longTermMemory = storage.getLongTermMemory(),
+              toastMessage = "Факты добавлены в долговременную память"
+            )
+          } else {
+            _uiState.value = _uiState.value.copy(isLoading = false, toastMessage = "Не удалось извлечь факты")
+          }
+        }
+        .onFailure { e ->
+          _uiState.value = _uiState.value.copy(isLoading = false, error = "Ошибка: ${e.message}")
+        }
+    }
+  }
+
+  /** Извлечь факты из текста сообщения и добавить в выбранную задачу (long-tap). */
+  fun addFactsToTaskFromMessage(taskId: Long, messageText: String) {
+    _uiState.value = _uiState.value.copy(longTapMessageText = null)
+    viewModelScope.launch {
+      _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+      repository.extractFactsFromText(messageText)
+        .onSuccess { facts ->
+          if (facts.isNotBlank()) {
+            storage.appendToTaskMemory(taskId, facts)
+            val updatedContent = storage.getTaskMemoryContent(taskId)
+            _uiState.value = _uiState.value.copy(
+              isLoading = false,
+              taskEditorContent = if (_uiState.value.taskEditorId == taskId) (updatedContent ?: _uiState.value.taskEditorContent) else _uiState.value.taskEditorContent,
+              toastMessage = "Факты добавлены в память задачи"
+            )
+          } else {
+            _uiState.value = _uiState.value.copy(isLoading = false, toastMessage = "Не удалось извлечь факты")
+          }
+        }
+        .onFailure { e ->
+          _uiState.value = _uiState.value.copy(isLoading = false, error = "Ошибка: ${e.message}")
+        }
+    }
+  }
+
+  fun setLongTapMessage(text: String?) {
+    _uiState.value = _uiState.value.copy(longTapMessageText = text)
   }
 }

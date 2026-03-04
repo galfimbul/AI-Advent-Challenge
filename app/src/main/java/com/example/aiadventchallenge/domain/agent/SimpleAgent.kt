@@ -27,7 +27,9 @@ data class AgentDialogState(
   /** Текущая ветка (Branching). */
   val currentBranchId: Long = 0L,
   /** Список веток (id, name) для переключателя. */
-  val branches: List<BranchInfo> = emptyList()
+  val branches: List<BranchInfo> = emptyList(),
+  /** Id задачи, подключённой к этой ветке диалога. null — не подключена. */
+  val loadedTaskId: Long? = null
 )
 
 data class AgentResponse(
@@ -50,7 +52,9 @@ class SimpleAgent(
     userRequest: String,
     contextStrategy: ContextStrategy = ContextStrategy.SlidingWindow,
     lastN: Int = 10,
-    forceContextOverflow: Boolean = false
+    forceContextOverflow: Boolean = false,
+    longTermMemory: String = "",
+    taskMemory: String? = null
   ): Result<AgentResponse> {
     val trimmed = userRequest.trim()
     if (trimmed.isEmpty()) {
@@ -67,6 +71,16 @@ class SimpleAgent(
     }
 
     val prompt = buildString {
+      if (longTermMemory.isNotBlank()) {
+        append("Долговременная память (профиль, решения, знания):\n")
+        append(longTermMemory)
+        append("\n\n")
+      }
+      if (!taskMemory.isNullOrBlank()) {
+        append("Память текущей задачи:\n")
+        append(taskMemory)
+        append("\n\n")
+      }
       if (contextStrategy == ContextStrategy.StickyFacts) {
         append("Учитывай блок «Факты» как источник целей, ограничений и договорённостей; не противоречь им в ответе.\n\n")
       }

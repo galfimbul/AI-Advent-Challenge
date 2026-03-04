@@ -94,3 +94,22 @@
 - **UI:** отображение текущей стратегии (русские названия); кнопка «Настройки» (иконка) → Bottom Sheet «Настройки агента» (стратегии по 2 в ряд, N 5/10/20; имя новой ветки не в настройках). При Branching: «Создать ветку» открывает диалог ввода имени, затем createBranch(name). При Facts — блок «Факты из диалога» (только чтение). При Ветки — вкладки (FilterChip) и «Создать ветку».
 - **Документация:** сценарий из 13 сообщений для ручной проверки стратегий — в [docs/AGENT_TEST_SCENARIO.md](docs/AGENT_TEST_SCENARIO.md); ссылка из PROJECT.md и раздела «Агент» в ARCHITECTURE.md.
 - **Рекомендация:** прогонять сценарий из docs/AGENT_TEST_SCENARIO.md по каждой стратегии и сравнивать качество ответа, стабильность, расход токенов, удобство.
+
+## День 11 (Модель памяти ассистента)
+
+- **Три слоя памяти:** (1) Память диалога — сообщения и стратегия контекста, живёт только в сессии, удаляется при «Очистить историю». (2) Память задачи — отдельное хранилище (agent_task_memories), опционально загружается в диалог; чистится отдельной кнопкой или чекбоксом при очистке сессии. (3) Долговременная память — один блок на чат (agent_long_term_memory), переживает очистку сессии.
+- **Room, миграция 3→4:** таблицы agent_long_term_memory (id, content), agent_task_memories (id, name, content). AgentLongTermMemoryDao, AgentTaskMemoryDao. AgentDialogStorage.clear() не трогает эти таблицы; clearTaskMemories() — удаление всех записей задач.
+- **ChatRepository:** extractFactsFromText(text: String): Result<String> — извлечение фактов из произвольного текста (для команд и long-tap).
+- **Domain:** SimpleAgent.process(..., longTermMemory, taskMemory) — в начале промпта блоки «Долговременная память» и «Память текущей задачи» (если не пусто).
+- **ViewModel:** загрузка longTerm и списка задач в init и при открытии настроек; передача в agent.process; saveLongTermMemory, saveTaskMemory, loadTaskIntoDialog, unloadTaskFromDialog, clearTaskMemories; openClearConfirmDialog, confirmClearDialog(alsoTaskMemory); разбор команд в поле ввода: /add_long_term текст, /add_task_memory текст (в загруженную задачу), /help; addFactsToLongTermFromMessage, addFactsToTaskFromMessage (long-tap).
+- **UI:** «Очистить историю» → диалог подтверждения с чекбоксом «Также очистить память задачи». В Bottom Sheet «Настройки агента»: секции «Долговременная память» (поле + Сохранить), «Память задачи» (список, загрузить в диалог/отключить, добавить задачу, очистить память задачи). Long-tap по сообщению → диалог «Извлечь факты и сохранить» → «В долговременную память» / «В задачу: имя». Команды в поле ввода не отправляются в модель — выполняются действия с памятью; /help — тост с подсказкой.
+- **Документация:** план в [docs/PLAN_DAY_11_MEMORY.md](docs/PLAN_DAY_11_MEMORY.md).
+
+### Подключённая задача по ветке (после Дня 11)
+
+- **Сохранение по ветке:** для каждой ветки диалога хранится id подключённой задачи (loadedTaskId). При перезаходе в приложение или при переключении на другую ветку ранее подключённая к этому диалогу задача автоматически подставляется (если задача не удалена).
+- **Room, миграция 4→5:** в таблицу `agent_branches` добавлена колонка `loadedTaskId INTEGER NULL`. AgentBranchEntity.loadedTaskId; AgentBranchDao.setLoadedTaskId(branchId, taskId).
+- **AgentDialogState:** поле `loadedTaskId: Long?` — возвращается из storage.load() для текущей ветки.
+- **AgentDialogStorage:** load() заполняет loadedTaskId из branchDao.getBranchById; saveLoadedTaskIdForBranch(branchId, taskId) — сохранение при подключении/отключении задачи.
+- **ViewModel:** в init и при switchBranch восстанавливается loadedTaskId из загруженного диалога (только если задача с этим id ещё есть в списке задач). loadTaskIntoDialog / unloadTaskFromDialog перед обновлением UI вызывают saveLoadedTaskIdForBranch(currentBranchId, …).
+- **Bottom Sheet настроек:** ограничение высоты листа (80% экрана), отступ под status bar (WindowInsets.systemBars), контент заполняет лист без пустого пространства снизу.

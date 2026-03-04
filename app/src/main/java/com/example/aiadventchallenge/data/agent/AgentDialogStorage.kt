@@ -7,11 +7,16 @@ import com.example.aiadventchallenge.domain.agent.BranchInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+/** Элемент списка памяти задач (id + имя) для UI. */
+data class TaskMemoryItem(val id: Long, val name: String)
+
 class AgentDialogStorage(
   private val messageDao: AgentMessageDao,
   private val summaryDao: AgentSummaryDao,
   private val factsDao: AgentFactsDao,
-  private val branchDao: AgentBranchDao
+  private val branchDao: AgentBranchDao,
+  private val longTermMemoryDao: AgentLongTermMemoryDao,
+  private val taskMemoryDao: AgentTaskMemoryDao
 ) {
 
   suspend fun load(currentBranchId: Long = 1L): AgentDialogState = withContext(Dispatchers.IO) {
@@ -33,12 +38,14 @@ class AgentDialogStorage(
     }
     val summaries = summaryDao.getAllSummaries().map { it.text }
     val facts = factsDao.getFacts()?.factsText ?: ""
+    val loadedTaskId = branchDao.getBranchById(branchId)?.loadedTaskId
     AgentDialogState(
       summaries = summaries,
       messages = messages,
       facts = facts,
       currentBranchId = branchId,
-      branches = branches.map { BranchInfo(it.id, it.name) }
+      branches = branches.map { BranchInfo(it.id, it.name) },
+      loadedTaskId = loadedTaskId
     )
   }
 
@@ -93,5 +100,58 @@ class AgentDialogStorage(
     factsDao.deleteAll()
     branchDao.deleteAll()
     branchDao.insert(AgentBranchEntity(id = 1L, name = "Основная", checkpointAt = 0))
+  }
+
+  // --- Долговременная память (не очищается при clear()) ---
+
+  suspend fun getLongTermMemory(): String = withContext(Dispatchers.IO) {
+    longTermMemoryDao.get()?.content ?: ""
+  }
+
+  suspend fun saveLongTermMemory(content: String) = withContext(Dispatchers.IO) {
+    longTermMemoryDao.insert(AgentLongTermMemoryEntity(id = 1L, content = content))
+  }
+
+  suspend fun appendToLongTermMemory(additionalText: String) = withContext(Dispatchers.IO) {
+    val current = longTermMemoryDao.get()?.content ?: ""
+    val separator = if (current.isNotEmpty()) "\n\n" else ""
+    longTermMemoryDao.insert(AgentLongTermMemoryEntity(id = 1L, content = current + separator + additionalText))
+  }
+
+  // --- Память задачи (очищается через clearTaskMemories()) ---
+
+  suspend fun getTaskMemories(): List<TaskMemoryItem> = withContext(Dispatchers.IO) {
+    taskMemoryDao.getAll().map { TaskMemoryItem(it.id, it.name) }
+  }
+
+  suspend fun getTaskMemoryContent(id: Long): String? = withContext(Dispatchers.IO) {
+    taskMemoryDao.getById(id)?.content
+  }
+
+  suspend fun saveTaskMemory(name: String, content: String): Long = withContext(Dispatchers.IO) {
+    taskMemoryDao.insert(AgentTaskMemoryEntity(name = name, content = content))
+  }
+
+  suspend fun appendToTaskMemory(id: Long, additionalText: String) = withContext(Dispatchers.IO) {
+    val existing = taskMemoryDao.getById(id) ?: return@withContext
+    val separator = if (existing.content.isNotEmpty()) "\n\n" else ""
+    taskMemoryDao.updateContent(id, existing.content + separator + additionalText)
+  }
+
+  suspend fun updateTaskMemory(id: Long, name: String, content: String) = withContext(Dispatchers.IO) {
+    taskMemoryDao.updateNameAndContent(id, name, content)
+  }
+
+  suspend fun deleteTaskMemory(id: Long) = withContext(Dispatchers.IO) {
+    taskMemoryDao.deleteById(id)
+  }
+
+  suspend fun clearTaskMemories() = withContext(Dispatchers.IO) {
+    taskMemoryDao.deleteAll()
+  }
+
+  /** Сохраняет id подключённой к ветке задачи (null = отключить). */
+  suspend fun saveLoadedTaskIdForBranch(branchId: Long, taskId: Long?) = withContext(Dispatchers.IO) {
+    branchDao.setLoadedTaskId(branchId, taskId)
   }
 }

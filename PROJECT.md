@@ -30,22 +30,26 @@ app/src/main/java/com/example/aiadventchallenge/
 │   │   ├── AgentSummaryDao.kt       # getAllSummaries, insert, deleteAll
 │   │   ├── AgentFactsEntity.kt       # Room Entity (id, factsText), таблица agent_facts
 │   │   ├── AgentFactsDao.kt          # getFacts, insert, deleteAll
-│   │   ├── AgentBranchEntity.kt      # Room Entity (id, name, checkpointAt), таблица agent_branches
-│   │   ├── AgentBranchDao.kt         # getAllBranches, getBranchById, insert, deleteAll
-│   │   ├── AppDatabase.kt          # Room Database, version 3, миграции 1→2, 2→3
-│   │   ├── AgentDialogStorage.kt   # load(branchId), save(dialog), saveFacts, insertSummary, createBranch, clear()
+│   │   ├── AgentBranchEntity.kt      # Room Entity (id, name, checkpointAt, loadedTaskId), таблица agent_branches
+│   │   ├── AgentBranchDao.kt         # getAllBranches, getBranchById, insert, deleteAll, setLoadedTaskId
+│   │   ├── AgentLongTermMemoryEntity.kt  # Room Entity (id, content), таблица agent_long_term_memory
+│   │   ├── AgentLongTermMemoryDao.kt     # get, insert (REPLACE)
+│   │   ├── AgentTaskMemoryEntity.kt   # Room Entity (id, name, content), таблица agent_task_memories
+│   │   ├── AgentTaskMemoryDao.kt     # getAll, getById, insert, updateContent, deleteById, deleteAll
+│   │   ├── AppDatabase.kt          # Room Database, version 5, миграции 1→2, 2→3, 3→4, 4→5
+│   │   ├── AgentDialogStorage.kt   # load, save, saveFacts, insertSummary, createBranch, clear; getLongTermMemory, saveLongTermMemory, appendToLongTermMemory; getTaskMemories, getTaskMemoryContent, saveTaskMemory, appendToTaskMemory, deleteTaskMemory, clearTaskMemories; saveLoadedTaskIdForBranch
 │   │   └── AgentCompressionPreferences.kt  # DataStore: context_strategy, last_n_messages
-│   ├── ChatRepository.kt        # sendMessage, extractOrUpdateFacts (Sticky Facts), summarizeDialog, runWithModel, compareModelResponses
+│   ├── ChatRepository.kt        # sendMessage, extractFactsFromText, extractOrUpdateFacts (Sticky Facts), summarizeDialog, runWithModel, compareModelResponses
 │   ├── ModelRunResult.kt        # Результат одного запроса к модели (время, токены, стоимость)
 │   └── openai/
 │       ├── OpenAiApi.kt         # Retrofit: POST v1/chat/completions
 │       └── OpenAiDto.kt         # Request/Response DTO, MessageContentDeserializer
 └── ui/
     ├── agent/
-    │   ├── AgentScreen.kt       # Чат: стратегия, блок Facts, вкладки веток, «Создать ветку»; кнопка Настройки → Bottom Sheet; LazyColumn, ввод, токены
-    │   ├── AgentUiState.kt      # messages, request, contextStrategy, currentBranchId, branches, facts, showCreateBranchDialog, createBranchNameInput, settingsSheetOpen, токены, toastMessage
-    │   ├── AgentViewModel.kt    # process(contextStrategy, lastN); StickyFacts: extractOrUpdateFacts до ответа; Summary: ensureSummaries; switchBranch, createBranch; настройки
-    │   └── AgentViewModelFactory.kt  # AgentDialogStorage(4 DAO), ChatRepository, AgentCompressionPreferences, AgentViewModel
+    │   ├── AgentScreen.kt       # Чат: стратегия, блок Facts, вкладки веток, «Создать ветку»; Настройки (память, стратегия, N); диалог очистки с чекбоксом; long-tap; LazyColumn, ввод, токены
+    │   ├── AgentUiState.kt      # messages, request, contextStrategy, branches, facts, longTermMemory, taskMemories, loadedTaskId, showClearConfirmDialog, clearDialogAlsoTaskMemory, longTapMessageText, …
+    │   ├── AgentViewModel.kt    # process(…, longTermMemory, taskMemory); команды /add_long_term, /add_task_memory, /help; память; confirmClearDialog(alsoTaskMemory); long-tap: addFactsToLongTerm/ToTaskFromMessage
+    │   └── AgentViewModelFactory.kt  # AgentDialogStorage(6 DAO), ChatRepository, AgentCompressionPreferences, AgentViewModel
     ├── components/
     │   └── LoadingOverlay.kt    # Полноэкранный оверлей с лоудером (переиспользуемый)
     ├── theme/                   # Цвета, типографика, тема
@@ -88,6 +92,7 @@ app/src/main/java/com/example/aiadventchallenge/
 | Сжатие контекста агента (День 9) | Summaries блоков по 10 сообщений + последние N сообщений в промпте; настройки в DataStore; ChatRepository.summarizeDialog |
 | Стратегии контекста (День 10) | Четыре стратегии (русские названия): Sliding Window, Sticky Facts, Branching, Summary. DataStore: context_strategy, last_n_messages. Имя ветки — в диалоге при «Создать ветку». Room: agent_facts, agent_branches, branchId в messages. Bottom Sheet «Настройки агента». ChatRepository.extractOrUpdateFacts |
 | Сценарий сообщений для теста стратегий агента | [docs/AGENT_TEST_SCENARIO.md](docs/AGENT_TEST_SCENARIO.md): таблица из 13 сообщений и подсказки по проверке каждой стратегии |
+| Модель памяти агента (День 11) | Три слоя: память диалога (сессия), память задачи (agent_task_memories), долговременная (agent_long_term_memory). [docs/PLAN_DAY_11_MEMORY.md](docs/PLAN_DAY_11_MEMORY.md). Настройки агента: секции памяти; команды /add_long_term, /add_task_memory, /help; long-tap по сообщению. ChatRepository.extractFactsFromText. Подключённая задача хранится по ветке (agent_branches.loadedTaskId, миграция 4→5), восстанавливается при загрузке и смене ветки. |
 | Тест превышения контекста (только debug) | Кнопка «Превысить контекст» слева от «Отправить» на экране агента; `SimpleAgent.process(..., forceContextOverflow = true)`; `AgentViewModel.sendContextOverflowTest()` |
 | Логи запросов/ответов | Logcat, тег `OpenAI` |
 
@@ -109,3 +114,4 @@ app/src/main/java/com/example/aiadventchallenge/
 - `challenge_day_8` — тест превышения контекста: кнопка «Превысить контекст» (только debug), слева от «Отправить»
 - `challenge_day_9` — управление контекстом: сжатие истории (summaries + последние N), переключатель и настройка N, сравнение расхода токенов
 - `challenge_day_10` — стратегии контекста: Sliding Window, Sticky Facts, Branching, Summary; Bottom Sheet настроек; сравнение на сценарии 10–15 сообщений
+- `challenge_day_11` — модель памяти: три слоя (диалог, задача, долговременная); Room agent_long_term_memory, agent_task_memories; команды в поле ввода; long-tap с извлечением фактов
