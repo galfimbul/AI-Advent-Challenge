@@ -4,7 +4,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.aiadventchallenge.data.ChatRepository
-import com.example.aiadventchallenge.data.agent.AgentCompressionPreferences
+import com.example.aiadventchallenge.data.agent.AgentPreferences
 import com.example.aiadventchallenge.data.agent.AgentDialogStorage
 import com.example.aiadventchallenge.data.agent.TaskMemoryItem
 import com.example.aiadventchallenge.domain.agent.AgentDialogState
@@ -28,7 +28,7 @@ class AgentViewModel(
   private val agent: SimpleAgent,
   private val storage: AgentDialogStorage,
   private val repository: ChatRepository,
-  private val compressionPreferences: AgentCompressionPreferences
+  private val agentPreferences: AgentPreferences
 ) : ViewModel() {
 
   private val _uiState = MutableStateFlow(AgentUiState())
@@ -39,7 +39,7 @@ class AgentViewModel(
   init {
     viewModelScope.launch {
       try {
-        val settings = compressionPreferences.getSettings()
+        val settings = agentPreferences.getSettings()
         _uiState.value = _uiState.value.copy(
           contextStrategy = settings.contextStrategy,
           lastN = settings.lastN,
@@ -50,6 +50,9 @@ class AgentViewModel(
         val taskList = storage.getTaskMemories()
         val restoredLoadedId = dialogState.loadedTaskId
         val loadedId = restoredLoadedId?.takeIf { id -> taskList.any { it.id == id } }
+        val profiles = storage.getAllProfiles()
+        val activeProfileId = agentPreferences.getActiveProfileId()
+        val validActiveId = activeProfileId?.takeIf { id -> profiles.any { it.id == id } }
         _uiState.value = _uiState.value.copy(
           messages = dialogState.messages,
           branches = dialogState.branches,
@@ -57,8 +60,13 @@ class AgentViewModel(
           facts = dialogState.facts,
           longTermMemory = longTerm,
           taskMemories = taskList,
-          loadedTaskId = loadedId
+          loadedTaskId = loadedId,
+          profiles = profiles,
+          activeProfileId = validActiveId
         )
+        if (validActiveId != activeProfileId) {
+          agentPreferences.setActiveProfileId(validActiveId)
+        }
       } catch (e: Exception) {
         Log.e(LOG_TAG, "Failed to load dialog or settings", e)
       }
@@ -104,13 +112,15 @@ class AgentViewModel(
       }
       val longTerm = _uiState.value.longTermMemory
       val taskMemory = _uiState.value.loadedTaskId?.let { id -> storage.getTaskMemoryContent(id) }
+      val userProfile = _uiState.value.activeProfileId?.let { id -> storage.getProfileContent(id) } ?: ""
       agent.process(
         stateToSend,
         request,
         contextStrategy = contextStrategy,
         lastN = lastN,
         longTermMemory = longTerm,
-        taskMemory = taskMemory
+        taskMemory = taskMemory,
+        userProfile = userProfile
       )
         .onSuccess { agentResponse ->
           dialogState = agentResponse.dialog
@@ -275,7 +285,7 @@ class AgentViewModel(
     _uiState.value = _uiState.value.copy(contextStrategy = value, useCompression = (value == ContextStrategy.Summary))
     viewModelScope.launch {
       try {
-        compressionPreferences.setContextStrategy(value)
+        agentPreferences.setContextStrategy(value)
       } catch (e: Exception) {
         Log.e(LOG_TAG, "Failed to save contextStrategy", e)
       }
@@ -287,7 +297,7 @@ class AgentViewModel(
     _uiState.value = _uiState.value.copy(lastN = n)
     viewModelScope.launch {
       try {
-        compressionPreferences.setLastN(n)
+        agentPreferences.setLastN(n)
       } catch (e: Exception) {
         Log.e(LOG_TAG, "Failed to save lastN", e)
       }
@@ -358,6 +368,7 @@ class AgentViewModel(
 
   fun openSettingsSheet() {
     _uiState.value = _uiState.value.copy(settingsSheetOpen = true)
+    loadProfiles()
     refreshLongTermMemory()
     loadTaskMemories()
     _uiState.value.loadedTaskId?.let { openTaskEditor(it) }
@@ -487,6 +498,146 @@ class AgentViewModel(
         _uiState.value = _uiState.value.copy(longTermMemory = storage.getLongTermMemory())
       } catch (e: Exception) {
         Log.e(LOG_TAG, "Failed to load long-term memory", e)
+      }
+    }
+  }
+
+  // --- Профили пользователя ---
+
+  fun loadProfiles() {
+    viewModelScope.launch {
+      try {
+        val profiles = storage.getAllProfiles()
+        val activeId = agentPreferences.getActiveProfileId()
+        val validActiveId = activeId?.takeIf { id -> profiles.any { it.id == id } }
+        _uiState.value = _uiState.value.copy(
+          profiles = profiles,
+          activeProfileId = validActiveId
+        )
+        if (validActiveId != activeId) {
+          agentPreferences.setActiveProfileId(validActiveId)
+        }
+      } catch (e: Exception) {
+        Log.e(LOG_TAG, "Failed to load profiles", e)
+      }
+    }
+  }
+
+  fun setActiveProfile(id: Long?) {
+    viewModelScope.launch {
+      try {
+        agentPreferences.setActiveProfileId(id)
+        _uiState.value = _uiState.value.copy(activeProfileId = id)
+      } catch (e: Exception) {
+        Log.e(LOG_TAG, "Failed to set active profile", e)
+      }
+    }
+  }
+
+  fun addProfile(name: String, preferences: String) {
+    viewModelScope.launch {
+      try {
+        val newId = storage.saveProfile(null, name.trim().ifBlank { "Профиль" }, preferences)
+        val profiles = storage.getAllProfiles()
+        agentPreferences.setActiveProfileId(newId)
+        _uiState.value = _uiState.value.copy(
+          profiles = profiles,
+          activeProfileId = newId,
+          profileEditorId = null,
+          profileEditorName = "",
+          profileEditorPreferences = "",
+          toastMessage = "Профиль добавлен"
+        )
+      } catch (e: Exception) {
+        Log.e(LOG_TAG, "Failed to add profile", e)
+      }
+    }
+  }
+
+  fun openProfileEditor(id: Long?) {
+    if (id == null) {
+      _uiState.value = _uiState.value.copy(
+        profileEditorId = null,
+        profileEditorName = "",
+        profileEditorPreferences = ""
+      )
+      return
+    }
+    viewModelScope.launch {
+      try {
+        val name = _uiState.value.profiles.firstOrNull { it.id == id }?.name ?: ""
+        val content = storage.getProfileContent(id) ?: ""
+        _uiState.value = _uiState.value.copy(
+          profileEditorId = id,
+          profileEditorName = name,
+          profileEditorPreferences = content
+        )
+      } catch (e: Exception) {
+        Log.e(LOG_TAG, "Failed to open profile editor", e)
+      }
+    }
+  }
+
+  fun updateProfileEditorName(value: String) {
+    _uiState.value = _uiState.value.copy(profileEditorName = value)
+  }
+
+  fun updateProfileEditorPreferences(value: String) {
+    _uiState.value = _uiState.value.copy(profileEditorPreferences = value)
+  }
+
+  fun saveProfileEditor() {
+    val id = _uiState.value.profileEditorId
+    val name = _uiState.value.profileEditorName.trim().ifBlank { "Профиль" }
+    val preferences = _uiState.value.profileEditorPreferences
+    viewModelScope.launch {
+      try {
+        val savedId = storage.saveProfile(id, name, preferences)
+        val profiles = storage.getAllProfiles()
+        _uiState.value = _uiState.value.copy(
+          profiles = profiles,
+          profileEditorId = null,
+          profileEditorName = "",
+          profileEditorPreferences = "",
+          toastMessage = "Профиль сохранён"
+        )
+        if (id != null && id == _uiState.value.activeProfileId) {
+          _uiState.value = _uiState.value.copy(activeProfileId = savedId)
+        }
+      } catch (e: Exception) {
+        Log.e(LOG_TAG, "Failed to save profile", e)
+      }
+    }
+  }
+
+  fun closeProfileEditor() {
+    _uiState.value = _uiState.value.copy(
+      profileEditorId = null,
+      profileEditorName = "",
+      profileEditorPreferences = ""
+    )
+  }
+
+  fun deleteProfile(profileId: Long) {
+    viewModelScope.launch {
+      try {
+        storage.deleteProfile(profileId)
+        val profiles = storage.getAllProfiles()
+        val wasActive = _uiState.value.activeProfileId == profileId
+        val newActiveId = if (wasActive) null else _uiState.value.activeProfileId
+        if (wasActive) {
+          agentPreferences.setActiveProfileId(null)
+        }
+        _uiState.value = _uiState.value.copy(
+          profiles = profiles,
+          activeProfileId = newActiveId,
+          profileEditorId = if (_uiState.value.profileEditorId == profileId) null else _uiState.value.profileEditorId,
+          profileEditorName = if (_uiState.value.profileEditorId == profileId) "" else _uiState.value.profileEditorName,
+          profileEditorPreferences = if (_uiState.value.profileEditorId == profileId) "" else _uiState.value.profileEditorPreferences,
+          toastMessage = "Профиль удалён"
+        )
+      } catch (e: Exception) {
+        Log.e(LOG_TAG, "Failed to delete profile", e)
       }
     }
   }

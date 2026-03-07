@@ -54,7 +54,8 @@ class SimpleAgent(
     lastN: Int = 10,
     forceContextOverflow: Boolean = false,
     longTermMemory: String = "",
-    taskMemory: String? = null
+    taskMemory: String? = null,
+    userProfile: String = ""
   ): Result<AgentResponse> {
     val trimmed = userRequest.trim()
     if (trimmed.isEmpty()) {
@@ -71,6 +72,11 @@ class SimpleAgent(
     }
 
     val prompt = buildString {
+      if (userProfile.isNotBlank()) {
+        append("Профиль пользователя (учитывай в ответах: стиль, формат, ограничения):\n")
+        append(userProfile)
+        append("\n\n")
+      }
       if (longTermMemory.isNotBlank()) {
         append("Долговременная память (профиль, решения, знания):\n")
         append(longTermMemory)
@@ -91,8 +97,12 @@ class SimpleAgent(
       append("\n\nДай развёрнутый, но по существу ответ, учитывая контекст беседы.")
     }
 
+    val systemMessage = if (userProfile.isNotBlank()) {
+      ChatRepository.DEFAULT_SYSTEM_MESSAGE + "\n\nУчитывай предпочтения пользователя (стиль, формат, ограничения):\n" + userProfile
+    } else null
     return repository.sendMessage(
       userMessage = prompt,
+      systemMessage = systemMessage,
       maxTokens = null,
       stopPhrases = null
     ).map { chatResponse ->

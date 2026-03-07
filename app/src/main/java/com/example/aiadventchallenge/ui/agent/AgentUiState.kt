@@ -1,6 +1,7 @@
 package com.example.aiadventchallenge.ui.agent
 
 import com.example.aiadventchallenge.data.agent.TaskMemoryItem
+import com.example.aiadventchallenge.data.agent.UserProfileItem
 import com.example.aiadventchallenge.domain.agent.AgentMessage
 import com.example.aiadventchallenge.domain.agent.BranchInfo
 import com.example.aiadventchallenge.domain.agent.ContextStrategy
@@ -30,6 +31,16 @@ data class AgentUiState(
   val lastTokensModeCompression: Boolean? = null,
   val toastMessage: String? = null,
   val settingsSheetOpen: Boolean = false,
+  /** Список профилей пользователя (для настроек). */
+  val profiles: List<UserProfileItem> = emptyList(),
+  /** Id активного профиля (null = без профиля). */
+  val activeProfileId: Long? = null,
+  /** Id профиля, открытого в редакторе (null = редактор закрыт). */
+  val profileEditorId: Long? = null,
+  /** Имя профиля в редакторе. */
+  val profileEditorName: String = "",
+  /** Предпочтения профиля в редакторе. */
+  val profileEditorPreferences: String = "",
   /** Долговременная память (профиль, знания). */
   val longTermMemory: String = "",
   /** Список задач для памяти задачи. */

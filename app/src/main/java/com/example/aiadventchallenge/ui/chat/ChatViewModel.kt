@@ -62,7 +62,7 @@ class ChatViewModel(
 
     viewModelScope.launch {
       _uiState.value = _uiState.value.copy(isLoading = true, error = null)
-      repository.sendMessage(query, maxTokens, stopPhrases)
+      repository.sendMessage(query, systemMessage = null, maxTokens = maxTokens, stopPhrases = stopPhrases)
         .onSuccess { result ->
           _uiState.value = _uiState.value.copy(
             response = result.content,

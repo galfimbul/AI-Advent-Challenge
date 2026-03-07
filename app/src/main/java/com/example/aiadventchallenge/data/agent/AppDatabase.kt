@@ -12,9 +12,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
     AgentFactsEntity::class,
     AgentBranchEntity::class,
     AgentLongTermMemoryEntity::class,
-    AgentTaskMemoryEntity::class
+    AgentTaskMemoryEntity::class,
+    AgentUserProfileEntity::class
   ],
-  version = 5
+  version = 6
 )
 abstract class AppDatabase : RoomDatabase() {
   abstract fun agentMessageDao(): AgentMessageDao
@@ -23,6 +24,7 @@ abstract class AppDatabase : RoomDatabase() {
   abstract fun agentBranchDao(): AgentBranchDao
   abstract fun agentLongTermMemoryDao(): AgentLongTermMemoryDao
   abstract fun agentTaskMemoryDao(): AgentTaskMemoryDao
+  abstract fun agentUserProfileDao(): AgentUserProfileDao
 }
 
 val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -89,5 +91,19 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
 val MIGRATION_4_5 = object : Migration(4, 5) {
   override fun migrate(db: SupportSQLiteDatabase) {
     db.execSQL("ALTER TABLE agent_branches ADD COLUMN loadedTaskId INTEGER NULL")
+  }
+}
+
+val MIGRATION_5_6 = object : Migration(5, 6) {
+  override fun migrate(db: SupportSQLiteDatabase) {
+    db.execSQL(
+      """
+      CREATE TABLE IF NOT EXISTS agent_user_profiles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+        name TEXT NOT NULL,
+        preferences TEXT NOT NULL DEFAULT ''
+      )
+      """.trimIndent()
+    )
   }
 }

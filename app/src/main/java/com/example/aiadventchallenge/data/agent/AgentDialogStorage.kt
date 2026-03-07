@@ -10,13 +10,17 @@ import kotlinx.coroutines.withContext
 /** Элемент списка памяти задач (id + имя) для UI. */
 data class TaskMemoryItem(val id: Long, val name: String)
 
+/** Элемент списка профилей пользователя (id + имя) для UI. */
+data class UserProfileItem(val id: Long, val name: String)
+
 class AgentDialogStorage(
   private val messageDao: AgentMessageDao,
   private val summaryDao: AgentSummaryDao,
   private val factsDao: AgentFactsDao,
   private val branchDao: AgentBranchDao,
   private val longTermMemoryDao: AgentLongTermMemoryDao,
-  private val taskMemoryDao: AgentTaskMemoryDao
+  private val taskMemoryDao: AgentTaskMemoryDao,
+  private val userProfileDao: AgentUserProfileDao
 ) {
 
   suspend fun load(currentBranchId: Long = 1L): AgentDialogState = withContext(Dispatchers.IO) {
@@ -153,5 +157,28 @@ class AgentDialogStorage(
   /** Сохраняет id подключённой к ветке задачи (null = отключить). */
   suspend fun saveLoadedTaskIdForBranch(branchId: Long, taskId: Long?) = withContext(Dispatchers.IO) {
     branchDao.setLoadedTaskId(branchId, taskId)
+  }
+
+  // --- Профили пользователя ---
+
+  suspend fun getAllProfiles(): List<UserProfileItem> = withContext(Dispatchers.IO) {
+    userProfileDao.getAll().map { UserProfileItem(it.id, it.name) }
+  }
+
+  suspend fun getProfileContent(id: Long): String? = withContext(Dispatchers.IO) {
+    userProfileDao.getById(id)?.preferences
+  }
+
+  suspend fun saveProfile(id: Long?, name: String, preferences: String): Long = withContext(Dispatchers.IO) {
+    if (id == null || id == 0L) {
+      userProfileDao.insert(AgentUserProfileEntity(name = name, preferences = preferences))
+    } else {
+      userProfileDao.update(id, name, preferences)
+      id
+    }
+  }
+
+  suspend fun deleteProfile(id: Long) = withContext(Dispatchers.IO) {
+    userProfileDao.deleteById(id)
   }
 }

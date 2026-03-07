@@ -38,11 +38,25 @@ const val MAX_TOKENS = 256
 
 const val STOP_SEQUENCE = "Закончил ответ"
 
-// System message задает формат и стиль ответа модели
-private const val SYSTEM_MESSAGE =
-  "Отвечай кратко и по делу. Завершай ответ естественно, без дополнительных пояснений."
-
 class ChatRepository {
+
+  companion object {
+    /** Базовая инструкция для модели (формат и стиль ответа). Используется по умолчанию и при формировании system message с профилем. */
+    const val DEFAULT_SYSTEM_MESSAGE =
+      "Отвечай кратко и по делу. Завершай ответ естественно, без дополнительных пояснений."
+    /** Модели для экрана «Версии моделей»: слабая → средняя → сильная. */
+    val MODELS_FOR_COMPARISON: List<Pair<String, String>> = listOf(
+      "gpt-4o-mini-2024-07-18" to "GPT-4o mini",
+      "gpt-4.1" to "GPT-4.1",
+      "gpt-5-nano" to "GPT-5 nano"
+    )
+    /** Цены USD за 1M токенов (input, output). Кеш по условию не учитываем. */
+    private val PRICING_PER_1M: Map<String, Pair<Double, Double>> = mapOf(
+      "gpt-4o-mini-2024-07-18" to (0.30 to 1.20),
+      "gpt-5-nano" to (0.05 to 0.40),
+      "gpt-4.1" to (2.00 to 8.00),
+    )
+  }
 
   private val api: OpenAiApi by lazy {
     val logging = HttpLoggingInterceptor { message -> Log.d(LOG_TAG, message) }
@@ -132,16 +146,20 @@ class ChatRepository {
 
   suspend fun sendMessage(
     userMessage: String,
+    systemMessage: String? = null,
     maxTokens: Int? = null,
     stopPhrases: List<String>?
-  ): Result<ChatResponse> = sendWithMessages(
-    messages = listOf(
-      ChatMessage(role = "system", content = SYSTEM_MESSAGE),
-      ChatMessage(role = "user", content = userMessage)
-    ),
-    maxTokens = maxTokens,
-    stopPhrases = stopPhrases
-  )
+  ): Result<ChatResponse> {
+    val system = systemMessage ?: DEFAULT_SYSTEM_MESSAGE
+    return sendWithMessages(
+      messages = listOf(
+        ChatMessage(role = "system", content = system),
+        ChatMessage(role = "user", content = userMessage)
+      ),
+      maxTokens = maxTokens,
+      stopPhrases = stopPhrases
+    )
+  }
 
   private suspend fun sendWithMessages(
     messages: List<ChatMessage>,
@@ -206,22 +224,6 @@ class ChatRepository {
     }
   }
 
-  /** Модели для экрана «Версии моделей»: слабая, средняя, сильная. */
-  companion object {
-    /** Слабая → средняя → сильная. */
-    val MODELS_FOR_COMPARISON: List<Pair<String, String>> = listOf(
-      "gpt-4o-mini-2024-07-18" to "GPT-4o mini",
-      "gpt-4.1" to "GPT-4.1",
-      "gpt-5-nano" to "GPT-5 nano"
-    )
-    /** Цены USD за 1M токенов (input, output). Кеш по условию не учитываем. */
-    private val PRICING_PER_1M: Map<String, Pair<Double, Double>> = mapOf(
-      "gpt-4o-mini-2024-07-18" to (0.30 to 1.20),
-      "gpt-5-nano" to (0.05 to 0.40),
-      "gpt-4.1" to (2.00 to 8.00),
-    )
-  }
-
   /** Один запрос к указанной модели с замером времени и расчётом стоимости. */
   suspend fun runWithModel(
     userMessage: String,
@@ -229,7 +231,7 @@ class ChatRepository {
     displayName: String
   ): Result<ModelRunResult> = withContext(Dispatchers.IO) {
     val messages = listOf(
-      ChatMessage(role = "system", content = SYSTEM_MESSAGE),
+      ChatMessage(role = "system", content = DEFAULT_SYSTEM_MESSAGE),
       ChatMessage(role = "user", content = userMessage)
     )
     val startMs = System.currentTimeMillis()

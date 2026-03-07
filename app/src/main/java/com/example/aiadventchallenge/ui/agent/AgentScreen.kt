@@ -63,6 +63,7 @@ import com.example.aiadventchallenge.BuildConfig
 import com.example.aiadventchallenge.domain.agent.AgentMessage
 import com.example.aiadventchallenge.domain.agent.AgentRole
 import com.example.aiadventchallenge.data.agent.TaskMemoryItem
+import com.example.aiadventchallenge.data.agent.UserProfileItem
 import com.example.aiadventchallenge.domain.agent.ContextStrategy
 import com.example.aiadventchallenge.domain.agent.displayName
 import com.example.aiadventchallenge.ui.components.LoadingOverlay
@@ -126,6 +127,14 @@ fun AgentScreen(
 
       Text(
         text = "Стратегия: ${uiState.contextStrategy.displayName()}",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+      )
+      val activeProfileName = uiState.activeProfileId?.let { id ->
+        uiState.profiles.firstOrNull { it.id == id }?.name
+      }
+      Text(
+        text = "Профиль: ${activeProfileName ?: "Без профиля"}",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant
       )
@@ -307,6 +316,19 @@ fun AgentScreen(
         ) {
           AgentSettingsSheetContent(
             modifier = Modifier.fillMaxSize(),
+            profiles = uiState.profiles,
+            activeProfileId = uiState.activeProfileId,
+            onSetActiveProfile = viewModel::setActiveProfile,
+            profileEditorId = uiState.profileEditorId,
+            profileEditorName = uiState.profileEditorName,
+            profileEditorPreferences = uiState.profileEditorPreferences,
+            onOpenProfileEditor = viewModel::openProfileEditor,
+            onProfileEditorNameChange = viewModel::updateProfileEditorName,
+            onProfileEditorPreferencesChange = viewModel::updateProfileEditorPreferences,
+            onSaveProfileEditor = viewModel::saveProfileEditor,
+            onCloseProfileEditor = viewModel::closeProfileEditor,
+            onDeleteProfile = viewModel::deleteProfile,
+            onAddProfile = viewModel::addProfile,
             contextStrategy = uiState.contextStrategy,
             lastN = uiState.lastN,
             longTermMemory = uiState.longTermMemory,
@@ -453,6 +475,19 @@ fun AgentScreen(
 @Composable
 private fun AgentSettingsSheetContent(
   modifier: Modifier = Modifier,
+  profiles: List<UserProfileItem>,
+  activeProfileId: Long?,
+  onSetActiveProfile: (Long?) -> Unit,
+  profileEditorId: Long?,
+  profileEditorName: String,
+  profileEditorPreferences: String,
+  onOpenProfileEditor: (Long?) -> Unit,
+  onProfileEditorNameChange: (String) -> Unit,
+  onProfileEditorPreferencesChange: (String) -> Unit,
+  onSaveProfileEditor: () -> Unit,
+  onCloseProfileEditor: () -> Unit,
+  onDeleteProfile: (Long) -> Unit,
+  onAddProfile: (String, String) -> Unit,
   contextStrategy: ContextStrategy,
   lastN: Int,
   longTermMemory: String,
@@ -479,6 +514,10 @@ private fun AgentSettingsSheetContent(
   var longTermInput by remember { mutableStateOf(longTermMemory) }
   var newTaskName by remember { mutableStateOf("") }
   var newTaskContent by remember { mutableStateOf("") }
+  var showAddProfileForm by remember { mutableStateOf(false) }
+  var newProfileName by remember { mutableStateOf("") }
+  var newProfilePreferences by remember { mutableStateOf("") }
+  var profileIdToDelete by remember { mutableStateOf<Long?>(null) }
   LaunchedEffect(longTermMemory) { longTermInput = longTermMemory }
 
   Column(
@@ -489,6 +528,142 @@ private fun AgentSettingsSheetContent(
       .verticalScroll(rememberScrollState()),
     verticalArrangement = Arrangement.spacedBy(16.dp)
   ) {
+    Text(
+      text = "Профиль пользователя",
+      style = MaterialTheme.typography.titleMedium
+    )
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      horizontalArrangement = Arrangement.spacedBy(8.dp),
+      verticalAlignment = Alignment.CenterVertically
+    ) {
+      FilterChip(
+        selected = activeProfileId == null,
+        onClick = { onSetActiveProfile(null) },
+        label = { Text("Без профиля") }
+      )
+    }
+    if (profiles.isNotEmpty()) {
+      Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        for (profile in profiles) {
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+          ) {
+            FilterChip(
+              selected = activeProfileId == profile.id,
+              onClick = { onSetActiveProfile(profile.id) },
+              label = { Text(profile.name) }
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+              TextButton(onClick = { onOpenProfileEditor(profile.id) }) {
+                Text("Изменить")
+              }
+              TextButton(onClick = { profileIdToDelete = profile.id }) {
+                Text("Удалить")
+              }
+            }
+          }
+        }
+      }
+    }
+    if (showAddProfileForm) {
+      OutlinedTextField(
+        value = newProfileName,
+        onValueChange = { newProfileName = it },
+        modifier = Modifier.fillMaxWidth(),
+        label = { Text("Название профиля") },
+        singleLine = true
+      )
+      OutlinedTextField(
+        value = newProfilePreferences,
+        onValueChange = { newProfilePreferences = it },
+        modifier = Modifier.fillMaxWidth(),
+        label = { Text("Предпочтения") },
+        placeholder = { Text("Стиль, формат, ограничения…") },
+        minLines = 2,
+        maxLines = 5
+      )
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+      ) {
+        OutlinedButton(
+          onClick = {
+            onAddProfile(newProfileName, newProfilePreferences)
+            newProfileName = ""
+            newProfilePreferences = ""
+            showAddProfileForm = false
+          }
+        ) {
+          Text("Сохранить")
+        }
+        TextButton(onClick = { showAddProfileForm = false; newProfileName = ""; newProfilePreferences = "" }) {
+          Text("Отмена")
+        }
+      }
+    } else if (profileEditorId != null) {
+      Text(
+        text = "Редактирование профиля",
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+      )
+      OutlinedTextField(
+        value = profileEditorName,
+        onValueChange = onProfileEditorNameChange,
+        modifier = Modifier.fillMaxWidth(),
+        label = { Text("Название") },
+        singleLine = true
+      )
+      OutlinedTextField(
+        value = profileEditorPreferences,
+        onValueChange = onProfileEditorPreferencesChange,
+        modifier = Modifier.fillMaxWidth(),
+        label = { Text("Предпочтения") },
+        placeholder = { Text("Стиль, формат, ограничения…") },
+        minLines = 2,
+        maxLines = 5
+      )
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+      ) {
+        OutlinedButton(onClick = onSaveProfileEditor) {
+          Text("Сохранить")
+        }
+        TextButton(onClick = onCloseProfileEditor) {
+          Text("Отмена")
+        }
+        OutlinedButton(onClick = { profileIdToDelete = profileEditorId }) {
+          Text("Удалить")
+        }
+      }
+    } else {
+      OutlinedButton(onClick = { showAddProfileForm = true }) {
+        Text("Добавить профиль")
+      }
+    }
+
+    if (profileIdToDelete != null) {
+      val id = profileIdToDelete!!
+      val name = profiles.firstOrNull { it.id == id }?.name ?: "Профиль"
+      AlertDialog(
+        onDismissRequest = { profileIdToDelete = null },
+        title = { Text("Удалить профиль?") },
+        text = { Text("«$name» будет удалён.") },
+        confirmButton = {
+          Button(onClick = {
+            onDeleteProfile(id)
+            profileIdToDelete = null
+          }) { Text("Удалить") }
+        },
+        dismissButton = {
+          TextButton(onClick = { profileIdToDelete = null }) { Text("Отмена") }
+        }
+      )
+    }
+
     Text(
       text = "Долговременная память",
       style = MaterialTheme.typography.titleMedium
