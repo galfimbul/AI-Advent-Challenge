@@ -21,6 +21,7 @@ private val LAST_N_MESSAGES = intPreferencesKey("last_n_messages")
 private val CONTEXT_STRATEGY = stringPreferencesKey("context_strategy")
 private val ACTIVE_PROFILE_ID = longPreferencesKey("active_profile_id")
 private val SHOW_CONTEXT_OVERFLOW_BUTTON = booleanPreferencesKey("show_context_overflow_button")
+private val AGENT_INVARIANTS = stringPreferencesKey("agent_invariants")
 
 data class AgentCompressionSettings(
   val useCompression: Boolean = false,
@@ -97,5 +98,12 @@ class AgentPreferences(private val context: Context) {
 
   suspend fun setShowContextOverflowButton(value: Boolean) {
     context.agentDataStore.edit { it[SHOW_CONTEXT_OVERFLOW_BUTTON] = value }
+  }
+
+  suspend fun getInvariantsText(): String =
+    context.agentDataStore.data.first()[AGENT_INVARIANTS] ?: ""
+
+  suspend fun setInvariantsText(value: String) {
+    context.agentDataStore.edit { it[AGENT_INVARIANTS] = value }
   }
 }

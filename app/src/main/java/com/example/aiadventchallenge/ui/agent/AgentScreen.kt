@@ -17,6 +17,9 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.width
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
@@ -48,6 +51,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.clickable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.input.pointer.pointerInput
@@ -462,7 +466,9 @@ fun AgentScreen(
             onStrategySelected = viewModel::setContextStrategy,
             onLastNSelected = viewModel::setLastN,
             showContextOverflowButton = uiState.showContextOverflowButton,
-            onShowContextOverflowButtonChange = viewModel::setShowContextOverflowButton
+            onShowContextOverflowButtonChange = viewModel::setShowContextOverflowButton,
+            invariantsText = uiState.invariantsText,
+            onSaveInvariants = viewModel::saveInvariants
           )
         }
       }
@@ -586,6 +592,46 @@ fun AgentScreen(
 }
 
 @Composable
+private fun CollapsibleSettingsBlock(
+  title: String,
+  expanded: Boolean,
+  onToggle: () -> Unit,
+  content: @Composable () -> Unit
+) {
+  Column(modifier = Modifier.fillMaxWidth()) {
+    Row(
+      modifier = Modifier
+        .fillMaxWidth()
+        .clickable(onClick = onToggle)
+        .padding(vertical = 12.dp),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+      Text(
+        text = title,
+        style = MaterialTheme.typography.titleMedium
+      )
+      Text(
+        text = if (expanded) " \u25B2" else " \u25BC",
+        style = MaterialTheme.typography.labelMedium
+      )
+    }
+    AnimatedVisibility(
+      visible = expanded,
+      enter = expandVertically(),
+      exit = shrinkVertically()
+    ) {
+      Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+      ) {
+        content()
+      }
+    }
+  }
+}
+
+@Composable
 private fun AgentSettingsSheetContent(
   modifier: Modifier = Modifier,
   profiles: List<UserProfileItem>,
@@ -623,7 +669,9 @@ private fun AgentSettingsSheetContent(
   onStrategySelected: (ContextStrategy) -> Unit,
   onLastNSelected: (Int) -> Unit,
   showContextOverflowButton: Boolean = false,
-  onShowContextOverflowButtonChange: (Boolean) -> Unit = {}
+  onShowContextOverflowButtonChange: (Boolean) -> Unit = {},
+  invariantsText: String = "",
+  onSaveInvariants: (String) -> Unit = {}
 ) {
   val focusManager = LocalFocusManager.current
   var longTermInput by remember { mutableStateOf(longTermMemory) }
@@ -633,7 +681,10 @@ private fun AgentSettingsSheetContent(
   var newProfileName by remember { mutableStateOf("") }
   var newProfilePreferences by remember { mutableStateOf("") }
   var profileIdToDelete by remember { mutableStateOf<Long?>(null) }
+  var expandedSectionId by remember { mutableStateOf<String?>("profile") }
+  var invariantsInput by remember { mutableStateOf(invariantsText) }
   LaunchedEffect(longTermMemory) { longTermInput = longTermMemory }
+  LaunchedEffect(invariantsText) { invariantsInput = invariantsText }
 
   Column(
     modifier = modifier
@@ -641,13 +692,14 @@ private fun AgentSettingsSheetContent(
       .padding(horizontal = 16.dp)
       .padding(bottom = 32.dp)
       .verticalScroll(rememberScrollState()),
-    verticalArrangement = Arrangement.spacedBy(16.dp)
+    verticalArrangement = Arrangement.spacedBy(8.dp)
   ) {
-    Text(
-      text = "Профиль пользователя",
-      style = MaterialTheme.typography.titleMedium
-    )
-    Row(
+    CollapsibleSettingsBlock(
+      title = "Профиль пользователя",
+      expanded = expandedSectionId == "profile",
+      onToggle = { expandedSectionId = if (expandedSectionId == "profile") null else "profile" }
+    ) {
+      Row(
       modifier = Modifier.fillMaxWidth(),
       horizontalArrangement = Arrangement.spacedBy(8.dp),
       verticalAlignment = Alignment.CenterVertically
@@ -759,6 +811,7 @@ private fun AgentSettingsSheetContent(
         Text("Добавить профиль")
       }
     }
+    }
 
     if (profileIdToDelete != null) {
       val id = profileIdToDelete!!
@@ -779,10 +832,11 @@ private fun AgentSettingsSheetContent(
       )
     }
 
-    Text(
-      text = "Долговременная память",
-      style = MaterialTheme.typography.titleMedium
-    )
+    CollapsibleSettingsBlock(
+      title = "Долговременная память",
+      expanded = expandedSectionId == "longTerm",
+      onToggle = { expandedSectionId = if (expandedSectionId == "longTerm") null else "longTerm" }
+    ) {
     OutlinedTextField(
       value = longTermInput,
       onValueChange = { longTermInput = it },
@@ -807,11 +861,13 @@ private fun AgentSettingsSheetContent(
         Text("Очистить")
       }
     }
+    }
 
-    Text(
-      text = "Память задачи",
-      style = MaterialTheme.typography.titleMedium
-    )
+    CollapsibleSettingsBlock(
+      title = "Память задачи",
+      expanded = expandedSectionId == "taskMemory",
+      onToggle = { expandedSectionId = if (expandedSectionId == "taskMemory") null else "taskMemory" }
+    ) {
     if (taskMemories.isNotEmpty()) {
       Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         for (task in taskMemories) {
@@ -900,11 +956,13 @@ private fun AgentSettingsSheetContent(
         }
       }
     }
+    }
 
-    Text(
-      text = "Стратегия контекста",
-      style = MaterialTheme.typography.titleMedium
-    )
+    CollapsibleSettingsBlock(
+      title = "Стратегия контекста",
+      expanded = expandedSectionId == "strategy",
+      onToggle = { expandedSectionId = if (expandedSectionId == "strategy") null else "strategy" }
+    ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
       for (rowStrategies in ContextStrategy.values().toList().chunked(2)) {
         Row(
@@ -937,10 +995,46 @@ private fun AgentSettingsSheetContent(
         }
       }
     }
-    Text(
-      text = "Отладка",
-      style = MaterialTheme.typography.titleMedium
+    }
+
+    CollapsibleSettingsBlock(
+      title = "Инварианты",
+      expanded = expandedSectionId == "invariants",
+      onToggle = { expandedSectionId = if (expandedSectionId == "invariants") null else "invariants" }
+    ) {
+    val invariantsCharLimit = 1500
+    val invariantsOverLimit = invariantsInput.length > invariantsCharLimit
+    OutlinedTextField(
+      value = invariantsInput,
+      onValueChange = { invariantsInput = it },
+      modifier = Modifier.fillMaxWidth(),
+      label = { Text("Правила, которые агент не должен нарушать") },
+      placeholder = { Text("Правила, которые агент не должен нарушать (каждый с новой строки или произвольный текст)") },
+      minLines = 3,
+      maxLines = 20
     )
+    if (invariantsOverLimit) {
+      Text(
+        text = "Большой объём текста увеличивает расход токенов. Рекомендуется до $invariantsCharLimit символов.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.error
+      )
+    }
+    OutlinedButton(
+      onClick = {
+        onSaveInvariants(invariantsInput)
+        focusManager.clearFocus()
+      }
+    ) {
+      Text("Сохранить")
+    }
+    }
+
+    CollapsibleSettingsBlock(
+      title = "Отладка",
+      expanded = expandedSectionId == "debug",
+      onToggle = { expandedSectionId = if (expandedSectionId == "debug") null else "debug" }
+    ) {
     Row(
       modifier = Modifier.fillMaxWidth(),
       verticalAlignment = Alignment.CenterVertically
@@ -953,6 +1047,7 @@ private fun AgentSettingsSheetContent(
         text = "Показать кнопку «Превысить контекст»",
         style = MaterialTheme.typography.bodyMedium
       )
+    }
     }
   }
 }

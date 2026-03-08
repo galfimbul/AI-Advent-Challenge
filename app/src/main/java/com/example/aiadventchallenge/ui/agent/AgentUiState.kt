@@ -63,5 +63,7 @@ data class AgentUiState(
   /** Текст сообщения для long-tap «Извлечь факты и сохранить» (если не null — показать диалог выбора слоя). */
   val longTapMessageText: String? = null,
   /** Показывать кнопку «Превысить контекст» (отладка), из настроек. */
-  val showContextOverflowButton: Boolean = false
+  val showContextOverflowButton: Boolean = false,
+  /** Текст инвариантов (правила, которые агент не должен нарушать). Загружается из AgentPreferences. */
+  val invariantsText: String = ""
 )

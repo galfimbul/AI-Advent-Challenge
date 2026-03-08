@@ -56,7 +56,8 @@ class SimpleAgent(
     longTermMemory: String = "",
     taskMemory: String? = null,
     taskState: TaskState? = null,
-    userProfile: String = ""
+    userProfile: String = "",
+    invariantsText: String = ""
   ): Result<AgentResponse> {
     val trimmed = userRequest.trim()
     if (trimmed.isEmpty()) {
@@ -111,9 +112,19 @@ class SimpleAgent(
       append("\n\nДай развёрнутый, но по существу ответ, учитывая контекст беседы.")
     }
 
-    val systemMessage = if (userProfile.isNotBlank()) {
-      ChatRepository.DEFAULT_SYSTEM_MESSAGE + "\n\nУчитывай предпочтения пользователя (стиль, формат, ограничения):\n" + userProfile
-    } else null
+    val invariantsBlock = buildString {
+      append("\n\nИнварианты (правила, которые нельзя нарушать):\n")
+      append(if (invariantsText.isNotBlank()) invariantsText else "Ограничений на ответ нет")
+      append("\n\nЭти инварианты нельзя нарушать ни при каких условиях. Если запрос пользователя противоречит любому инварианту — откажи в выполнении и чётко объясни, какой инвариант нарушен и почему ты не можешь выполнить запрос.")
+    }
+    val systemMessage = buildString {
+      append(ChatRepository.DEFAULT_SYSTEM_MESSAGE)
+      if (userProfile.isNotBlank()) {
+        append("\n\nУчитывай предпочтения пользователя (стиль, формат, ограничения):\n")
+        append(userProfile)
+      }
+      append(invariantsBlock)
+    }
     return repository.sendMessage(
       userMessage = prompt,
       systemMessage = systemMessage,

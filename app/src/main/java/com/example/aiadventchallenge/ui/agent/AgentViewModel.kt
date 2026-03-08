@@ -57,6 +57,7 @@ class AgentViewModel(
         val profiles = storage.getAllProfiles()
         val activeProfileId = agentPreferences.getActiveProfileId()
         val validActiveId = activeProfileId?.takeIf { id -> profiles.any { it.id == id } }
+        val invariantsText = agentPreferences.getInvariantsText()
         val taskState = loadedId?.let { storage.getTaskState(it) }
         val resumedState = if (taskState?.isPaused == true) taskState.copy(isPaused = false) else taskState
         if (taskState?.isPaused == true && loadedId != null) {
@@ -72,7 +73,8 @@ class AgentViewModel(
           loadedTaskId = loadedId,
           loadedTaskState = resumedState,
           profiles = profiles,
-          activeProfileId = validActiveId
+          activeProfileId = validActiveId,
+          invariantsText = invariantsText
         )
         if (validActiveId != activeProfileId) {
           agentPreferences.setActiveProfileId(validActiveId)
@@ -144,6 +146,7 @@ class AgentViewModel(
     val taskMemory = _uiState.value.loadedTaskId?.let { id -> storage.getTaskMemoryContent(id) }
     val taskState = taskStateOverride ?: _uiState.value.loadedTaskState
     val userProfile = _uiState.value.activeProfileId?.let { id -> storage.getProfileContent(id) } ?: ""
+    val invariantsText = _uiState.value.invariantsText
     agent.process(
       stateToSend,
       request,
@@ -152,7 +155,8 @@ class AgentViewModel(
       longTermMemory = longTerm,
       taskMemory = taskMemory,
       taskState = taskState,
-      userProfile = userProfile
+      userProfile = userProfile,
+      invariantsText = invariantsText
     )
       .onSuccess { agentResponse ->
         dialogState = agentResponse.dialog
@@ -609,10 +613,27 @@ class AgentViewModel(
     refreshLongTermMemory()
     loadTaskMemories()
     _uiState.value.loadedTaskId?.let { openTaskEditor(it) }
+    viewModelScope.launch {
+      val inv = agentPreferences.getInvariantsText()
+      _uiState.value = _uiState.value.copy(invariantsText = inv)
+    }
   }
 
   fun closeSettingsSheet() {
     _uiState.value = _uiState.value.copy(settingsSheetOpen = false)
+  }
+
+  /** Сохраняет текст инвариантов в AgentPreferences. При ошибке показывает тост «Не удалось сохранить». */
+  fun saveInvariants(text: String) {
+    viewModelScope.launch {
+      try {
+        agentPreferences.setInvariantsText(text)
+        _uiState.value = _uiState.value.copy(invariantsText = text)
+      } catch (e: Exception) {
+        Log.e(LOG_TAG, "Failed to save invariants", e)
+        _uiState.value = _uiState.value.copy(toastMessage = "Не удалось сохранить")
+      }
+    }
   }
 
   fun setUseCompression(value: Boolean) {
@@ -624,7 +645,7 @@ class AgentViewModel(
   fun sendContextOverflowTest() {
     _uiState.value = _uiState.value.copy(isLoading = true, error = null)
     viewModelScope.launch {
-      agent.process(dialogState, "Тест: превышение контекста", contextStrategy = ContextStrategy.SlidingWindow, lastN = 10, forceContextOverflow = true, longTermMemory = "", taskMemory = null, taskState = null)
+      agent.process(dialogState, "Тест: превышение контекста", contextStrategy = ContextStrategy.SlidingWindow, lastN = 10, forceContextOverflow = true, longTermMemory = "", taskMemory = null, taskState = null, userProfile = "", invariantsText = _uiState.value.invariantsText)
         .onSuccess { agentResponse ->
           dialogState = agentResponse.dialog
           _uiState.value = _uiState.value.copy(
