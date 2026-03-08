@@ -12,6 +12,8 @@ import com.example.aiadventchallenge.domain.agent.AgentMessage
 import com.example.aiadventchallenge.domain.agent.AgentRole
 import com.example.aiadventchallenge.domain.agent.ContextStrategy
 import com.example.aiadventchallenge.domain.agent.SimpleAgent
+import com.example.aiadventchallenge.domain.agent.TaskStage
+import com.example.aiadventchallenge.domain.agent.TaskState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -40,10 +42,12 @@ class AgentViewModel(
     viewModelScope.launch {
       try {
         val settings = agentPreferences.getSettings()
+        val showOverflow = agentPreferences.getShowContextOverflowButton()
         _uiState.value = _uiState.value.copy(
           contextStrategy = settings.contextStrategy,
           lastN = settings.lastN,
-          useCompression = settings.useCompression
+          useCompression = settings.useCompression,
+          showContextOverflowButton = showOverflow
         )
         dialogState = storage.load(_uiState.value.currentBranchId)
         val longTerm = storage.getLongTermMemory()
@@ -53,6 +57,11 @@ class AgentViewModel(
         val profiles = storage.getAllProfiles()
         val activeProfileId = agentPreferences.getActiveProfileId()
         val validActiveId = activeProfileId?.takeIf { id -> profiles.any { it.id == id } }
+        val taskState = loadedId?.let { storage.getTaskState(it) }
+        val resumedState = if (taskState?.isPaused == true) taskState.copy(isPaused = false) else taskState
+        if (taskState?.isPaused == true && loadedId != null) {
+          storage.updateTaskState(loadedId, taskState.stage, taskState.currentStep, isPaused = false)
+        }
         _uiState.value = _uiState.value.copy(
           messages = dialogState.messages,
           branches = dialogState.branches,
@@ -61,6 +70,7 @@ class AgentViewModel(
           longTermMemory = longTerm,
           taskMemories = taskList,
           loadedTaskId = loadedId,
+          loadedTaskState = resumedState,
           profiles = profiles,
           activeProfileId = validActiveId
         )
@@ -81,8 +91,12 @@ class AgentViewModel(
     val request = _uiState.value.request.trim()
     if (request.isEmpty()) return
 
+    if (request.equals("/reject", ignoreCase = true) || request.startsWith("/reject ", ignoreCase = true)) {
+      rejectWithUserComment(request)
+      return
+    }
     if (request.startsWith("/")) {
-      handleMemoryCommand(request)
+      executeCommand(request)
       return
     }
 
@@ -110,47 +124,66 @@ class AgentViewModel(
             return@launch
           }
       }
-      val longTerm = _uiState.value.longTermMemory
-      val taskMemory = _uiState.value.loadedTaskId?.let { id -> storage.getTaskMemoryContent(id) }
-      val userProfile = _uiState.value.activeProfileId?.let { id -> storage.getProfileContent(id) } ?: ""
-      agent.process(
-        stateToSend,
-        request,
-        contextStrategy = contextStrategy,
-        lastN = lastN,
-        longTermMemory = longTerm,
-        taskMemory = taskMemory,
-        userProfile = userProfile
-      )
-        .onSuccess { agentResponse ->
-          dialogState = agentResponse.dialog
-          _uiState.value = _uiState.value.copy(
-            isLoading = false,
-            messages = agentResponse.dialog.messages,
-            request = "",
-            error = null,
-            promptTokens = agentResponse.raw.promptTokens,
-            completionTokens = agentResponse.raw.completionTokens,
-            totalTokens = agentResponse.raw.totalTokens,
-            lastTokensModeCompression = (contextStrategy == ContextStrategy.Summary),
-            facts = agentResponse.dialog.facts
-          )
-          try {
-            storage.save(dialogState)
-            if (contextStrategy == ContextStrategy.Summary) {
-              ensureSummaries(dialogState)
-            }
-          } catch (e: Exception) {
-            Log.e(LOG_TAG, "Failed to save dialog", e)
-          }
-        }
-        .onFailure { e ->
-          _uiState.value = _uiState.value.copy(
-            isLoading = false,
-            error = e.message ?: e.toString()
-          )
-        }
+      runAgentRequest(stateToSend, request)
     }
+  }
+
+  /**
+   * Вызывает агента с заданным состоянием диалога и запросом.
+   * [onSuccessChain] — опционально вызывается после успеха (для авто-валидации после выполнения плана).
+   */
+  private suspend fun runAgentRequest(
+    stateToSend: AgentDialogState,
+    request: String,
+    taskStateOverride: TaskState? = null,
+    onSuccessChain: (suspend (AgentDialogState, TaskState?) -> Unit)? = null
+  ) {
+    val contextStrategy = _uiState.value.contextStrategy
+    val lastN = _uiState.value.lastN
+    val longTerm = _uiState.value.longTermMemory
+    val taskMemory = _uiState.value.loadedTaskId?.let { id -> storage.getTaskMemoryContent(id) }
+    val taskState = taskStateOverride ?: _uiState.value.loadedTaskState
+    val userProfile = _uiState.value.activeProfileId?.let { id -> storage.getProfileContent(id) } ?: ""
+    agent.process(
+      stateToSend,
+      request,
+      contextStrategy = contextStrategy,
+      lastN = lastN,
+      longTermMemory = longTerm,
+      taskMemory = taskMemory,
+      taskState = taskState,
+      userProfile = userProfile
+    )
+      .onSuccess { agentResponse ->
+        dialogState = agentResponse.dialog
+        _uiState.value = _uiState.value.copy(
+          isLoading = (onSuccessChain != null),
+          messages = agentResponse.dialog.messages,
+          request = "",
+          error = null,
+          promptTokens = agentResponse.raw.promptTokens,
+          completionTokens = agentResponse.raw.completionTokens,
+          totalTokens = agentResponse.raw.totalTokens,
+          lastTokensModeCompression = (contextStrategy == ContextStrategy.Summary),
+          facts = agentResponse.dialog.facts,
+          loadedTaskState = taskStateOverride ?: _uiState.value.loadedTaskState
+        )
+        try {
+          storage.save(dialogState)
+          if (contextStrategy == ContextStrategy.Summary) {
+            ensureSummaries(dialogState)
+          }
+        } catch (e: Exception) {
+          Log.e(LOG_TAG, "Failed to save dialog", e)
+        }
+        onSuccessChain?.invoke(agentResponse.dialog, taskState)
+      }
+      .onFailure { e ->
+        _uiState.value = _uiState.value.copy(
+          isLoading = false,
+          error = e.message ?: e.toString()
+        )
+      }
   }
 
   /** Генерирует и сохраняет недостающие summaries (блоки по 10 сообщений с начала). Сообщения не удаляются. */
@@ -192,15 +225,21 @@ class AgentViewModel(
     }
   }
 
-  private fun handleMemoryCommand(input: String) {
+  /**
+   * Выполнить команду (из поля ввода или из UI «Команды»).
+   * Поведение идентично вводу команды вручную.
+   */
+  fun executeCommand(input: String) {
     val trimmed = input.trim()
     when {
       trimmed.equals("/help", ignoreCase = true) || trimmed.equals("/memory_help", ignoreCase = true) -> {
         _uiState.value = _uiState.value.copy(
           request = "",
-          toastMessage = "Команды: /add_long_term текст — факты в долговременную память; /add_task_memory текст — факты в загруженную задачу; /help — эта подсказка"
+          toastMessage = "Команды: /confirm — следующий этап; /reject — отклонить, в поле добавится /reject для комментария; /reset_planning — сброс к планированию; /add_long_term текст; /add_task_memory текст; /help"
         )
       }
+      trimmed.equals("/confirm", ignoreCase = true) -> confirmTaskResult()
+      trimmed.equals("/reset_planning", ignoreCase = true) || trimmed.equals("/planning", ignoreCase = true) -> resetTaskToPlanning()
       trimmed.startsWith("/add_long_term", ignoreCase = true) -> {
         val text = trimmed.removePrefix("/add_long_term").trim()
         if (text.isEmpty()) {
@@ -281,6 +320,202 @@ class AgentViewModel(
     _uiState.value = _uiState.value.copy(toastMessage = null)
   }
 
+  /** Пауза подключённой задачи при выходе с экрана. */
+  fun onLeaveScreen() {
+    val id = _uiState.value.loadedTaskId ?: return
+    val state = _uiState.value.loadedTaskState ?: return
+    viewModelScope.launch {
+      try {
+        storage.updateTaskState(id, state.stage, state.currentStep, isPaused = true)
+      } catch (e: Exception) {
+        Log.e(LOG_TAG, "Failed to pause task on leave", e)
+      }
+    }
+  }
+
+  /** Снять паузу при входе на экран: сразу обновить UI, затем сохранить в БД. */
+  fun onEnterScreen() {
+    val id = _uiState.value.loadedTaskId ?: return
+    val state = _uiState.value.loadedTaskState ?: return
+    _uiState.value = _uiState.value.copy(loadedTaskState = state.copy(isPaused = false))
+    viewModelScope.launch {
+      try {
+        storage.updateTaskState(id, state.stage, state.currentStep, isPaused = false)
+      } catch (e: Exception) {
+        Log.e(LOG_TAG, "Failed to resume task on enter", e)
+      }
+    }
+  }
+
+  private fun nextStage(stage: TaskStage): TaskStage? = when (stage) {
+    TaskStage.Planning -> TaskStage.Execution
+    TaskStage.Execution -> TaskStage.Validation
+    TaskStage.Validation -> TaskStage.Done
+    TaskStage.Done -> null
+  }
+
+  private fun prevStage(stage: TaskStage): TaskStage? = when (stage) {
+    TaskStage.Planning -> null
+    TaskStage.Execution -> TaskStage.Planning
+    TaskStage.Validation -> TaskStage.Execution
+    TaskStage.Done -> TaskStage.Validation
+  }
+
+  fun confirmTaskResult() {
+    val id = _uiState.value.loadedTaskId ?: run {
+      _uiState.value = _uiState.value.copy(request = "", toastMessage = "Подключите задачу к диалогу")
+      return
+    }
+    val state = _uiState.value.loadedTaskState ?: run {
+      _uiState.value = _uiState.value.copy(request = "", toastMessage = "Состояние задачи не загружено")
+      return
+    }
+    if (state.isPaused) {
+      _uiState.value = _uiState.value.copy(request = "", toastMessage = "Задача на паузе")
+      return
+    }
+    if (state.stage == TaskStage.Done) {
+      _uiState.value = _uiState.value.copy(request = "", toastMessage = "Задача уже завершена")
+      return
+    }
+    val next = nextStage(state.stage) ?: return
+    var newStep = state.currentStep
+    if (state.stage == TaskStage.Execution) newStep = state.currentStep + 1
+    viewModelScope.launch {
+      try {
+        storage.updateTaskState(id, next, newStep, isPaused = false)
+        val msg = AgentMessage(AgentRole.User, "[Подтверждено: переход к этапу ${next.displayName()}]")
+        dialogState = storage.load(_uiState.value.currentBranchId)
+        val newMessages = dialogState.messages + msg
+        storage.save(dialogState.copy(messages = newMessages))
+        dialogState = dialogState.copy(messages = newMessages)
+        val updatedState = storage.getTaskState(id)
+        _uiState.value = _uiState.value.copy(
+          request = "",
+          messages = newMessages,
+          loadedTaskState = updatedState,
+          toastMessage = "Этап: ${next.displayName()}"
+        )
+        if (next == TaskStage.Execution) {
+          _uiState.value = _uiState.value.copy(isLoading = true)
+          runAgentRequest(
+            dialogState,
+            "Выполняй шаги плана.",
+            updatedState,
+            onSuccessChain = { execDialog, execState ->
+              if (execState?.stage != TaskStage.Execution) return@runAgentRequest
+              val taskId = _uiState.value.loadedTaskId ?: return@runAgentRequest
+              storage.updateTaskState(taskId, TaskStage.Validation, execState.currentStep, isPaused = false)
+              val validationState = storage.getTaskState(taskId) ?: return@runAgentRequest
+              val validationMsg = AgentMessage(AgentRole.User, "[Валидация решения…]")
+              val withValidationMsg = execDialog.messages + validationMsg
+              dialogState = execDialog.copy(messages = withValidationMsg)
+              storage.save(dialogState)
+              _uiState.value = _uiState.value.copy(
+                messages = withValidationMsg,
+                loadedTaskState = validationState,
+                toastMessage = "Валидация решения…"
+              )
+              runAgentRequest(
+                dialogState,
+                "Проверь результат. Если выполнение корректно — предложи пользователю подтвердить (/confirm). Иначе укажи, что переделать, и предложи /reject.",
+                validationState
+              )
+            }
+          )
+        } else if (next == TaskStage.Validation) {
+          val prompt = "Проверь результат и предложи пользователю подтвердить (/confirm) или отклонить (/reject)."
+          _uiState.value = _uiState.value.copy(isLoading = true)
+          runAgentRequest(dialogState, prompt, updatedState)
+        }
+      } catch (e: Exception) {
+        Log.e(LOG_TAG, "Failed to confirm task result", e)
+        _uiState.value = _uiState.value.copy(request = "", error = "Ошибка: ${e.message}")
+      }
+    }
+  }
+
+  /** Подставляет в поле ввода «/reject » для добавления комментария. Вызывать из UI (Команды). */
+  fun prepareReject() {
+    _uiState.value = _uiState.value.copy(request = "/reject ", error = null)
+  }
+
+  /**
+   * Обработка отправки /reject или /reject комментарий: этап не меняется,
+   * в диалог пишется отметка об отклонении, в модель уходит запрос на повторное выполнение плана с учётом комментария.
+   */
+  fun rejectWithUserComment(fullMessage: String) {
+    val id = _uiState.value.loadedTaskId ?: run {
+      _uiState.value = _uiState.value.copy(request = "", toastMessage = "Подключите задачу к диалогу")
+      return
+    }
+    val state = _uiState.value.loadedTaskState ?: run {
+      _uiState.value = _uiState.value.copy(request = "", toastMessage = "Состояние задачи не загружено")
+      return
+    }
+    if (state.isPaused) {
+      _uiState.value = _uiState.value.copy(request = "", toastMessage = "Задача на паузе")
+      return
+    }
+    if (state.stage == TaskStage.Planning) {
+      _uiState.value = _uiState.value.copy(request = "", toastMessage = "Уже на первом этапе")
+      return
+    }
+    val t = fullMessage.trim()
+    val comment = when {
+      t.equals("/reject", ignoreCase = true) -> ""
+      t.startsWith("/reject ", ignoreCase = true) -> t.drop(8).trim()
+      else -> t
+    }
+    viewModelScope.launch {
+      try {
+        val commentLabel = if (comment.isNotEmpty()) " Комментарий: $comment." else ""
+        val msg = AgentMessage(AgentRole.User, "[Отклонено пользователем.$commentLabel]")
+        dialogState = storage.load(_uiState.value.currentBranchId)
+        val newMessages = dialogState.messages + msg
+        storage.save(dialogState.copy(messages = newMessages))
+        dialogState = dialogState.copy(messages = newMessages)
+        val prompt = if (comment.isNotEmpty()) {
+          "Предыдущий результат отклонён пользователем. Комментарий пользователя: $comment. Выполни план заново с учётом замечаний."
+        } else {
+          "Предыдущий результат отклонён пользователем. Выполни план заново, учтя возможные улучшения."
+        }
+        _uiState.value = _uiState.value.copy(
+          request = "",
+          messages = newMessages,
+          toastMessage = "Запрос на повторное выполнение отправлен"
+        )
+        _uiState.value = _uiState.value.copy(isLoading = true)
+        runAgentRequest(dialogState, prompt, state)
+      } catch (e: Exception) {
+        Log.e(LOG_TAG, "Failed to reject and re-execute", e)
+        _uiState.value = _uiState.value.copy(request = "", error = "Ошибка: ${e.message}")
+      }
+    }
+  }
+
+  /** Сбросить подключённую задачу к этапу «Планирование», шаг 0. Команда /reset_planning или /planning. */
+  fun resetTaskToPlanning() {
+    val id = _uiState.value.loadedTaskId ?: run {
+      _uiState.value = _uiState.value.copy(request = "", toastMessage = "Подключите задачу к диалогу")
+      return
+    }
+    viewModelScope.launch {
+      try {
+        storage.updateTaskState(id, TaskStage.Planning, 0, isPaused = false)
+        val updated = storage.getTaskState(id)
+        _uiState.value = _uiState.value.copy(
+          request = "",
+          loadedTaskState = updated,
+          toastMessage = "Задача сброшена к планированию"
+        )
+      } catch (e: Exception) {
+        Log.e(LOG_TAG, "Failed to reset task to planning", e)
+        _uiState.value = _uiState.value.copy(request = "", error = "Ошибка: ${e.message}")
+      }
+    }
+  }
+
   fun setContextStrategy(value: ContextStrategy) {
     _uiState.value = _uiState.value.copy(contextStrategy = value, useCompression = (value == ContextStrategy.Summary))
     viewModelScope.launch {
@@ -327,11 +562,13 @@ class AgentViewModel(
         val taskList = _uiState.value.taskMemories
         val restoredLoadedId = dialogState.loadedTaskId
         val loadedId = restoredLoadedId?.takeIf { id -> taskList.any { it.id == id } }
+        val taskState = loadedId?.let { storage.getTaskState(it) }
         _uiState.value = _uiState.value.copy(
           messages = dialogState.messages,
           currentBranchId = dialogState.currentBranchId,
           facts = dialogState.facts,
-          loadedTaskId = loadedId
+          loadedTaskId = loadedId,
+          loadedTaskState = taskState
         )
       } catch (e: Exception) {
         Log.e(LOG_TAG, "Failed to switch branch", e)
@@ -387,7 +624,7 @@ class AgentViewModel(
   fun sendContextOverflowTest() {
     _uiState.value = _uiState.value.copy(isLoading = true, error = null)
     viewModelScope.launch {
-      agent.process(dialogState, "Тест: превышение контекста", contextStrategy = ContextStrategy.SlidingWindow, lastN = 10, forceContextOverflow = true, longTermMemory = "", taskMemory = null)
+      agent.process(dialogState, "Тест: превышение контекста", contextStrategy = ContextStrategy.SlidingWindow, lastN = 10, forceContextOverflow = true, longTermMemory = "", taskMemory = null, taskState = null)
         .onSuccess { agentResponse ->
           dialogState = agentResponse.dialog
           _uiState.value = _uiState.value.copy(
@@ -443,6 +680,12 @@ class AgentViewModel(
         }
         dialogState = storage.load(1L)
         val taskList = storage.getTaskMemories()
+        val keptLoadedId = if (alsoTaskMemory) null else _uiState.value.loadedTaskId
+        var keptTaskState = keptLoadedId?.let { storage.getTaskState(it) }
+        if (keptLoadedId != null) {
+          storage.updateTaskState(keptLoadedId, TaskStage.Planning, 0, isPaused = false)
+          keptTaskState = storage.getTaskState(keptLoadedId)
+        }
         _uiState.value = _uiState.value.copy(
           showClearConfirmDialog = false,
           messages = dialogState.messages,
@@ -450,7 +693,8 @@ class AgentViewModel(
           currentBranchId = 1L,
           facts = "",
           taskMemories = taskList,
-          loadedTaskId = if (alsoTaskMemory) null else _uiState.value.loadedTaskId,
+          loadedTaskId = keptLoadedId,
+          loadedTaskState = keptTaskState,
           promptTokens = null,
           completionTokens = null,
           totalTokens = null,
@@ -658,11 +902,13 @@ class AgentViewModel(
     viewModelScope.launch {
       try {
         storage.saveLoadedTaskIdForBranch(_uiState.value.currentBranchId, taskId)
+        val taskState = storage.getTaskState(taskId)
+        _uiState.value = _uiState.value.copy(loadedTaskId = taskId, loadedTaskState = taskState)
       } catch (e: Exception) {
         Log.e(LOG_TAG, "Failed to save loaded task for branch", e)
       }
     }
-    _uiState.value = _uiState.value.copy(loadedTaskId = taskId)
+    _uiState.value = _uiState.value.copy(loadedTaskId = taskId, loadedTaskState = null)
   }
 
   fun unloadTaskFromDialog() {
@@ -673,7 +919,7 @@ class AgentViewModel(
         Log.e(LOG_TAG, "Failed to clear loaded task for branch", e)
       }
     }
-    _uiState.value = _uiState.value.copy(loadedTaskId = null)
+    _uiState.value = _uiState.value.copy(loadedTaskId = null, loadedTaskState = null)
   }
 
   fun openTaskEditor(taskId: Long) {
@@ -738,9 +984,11 @@ class AgentViewModel(
       try {
         storage.deleteTaskMemory(taskId)
         val newList = storage.getTaskMemories()
+        val wasLoaded = _uiState.value.loadedTaskId == taskId
         _uiState.value = _uiState.value.copy(
           taskMemories = newList,
-          loadedTaskId = if (_uiState.value.loadedTaskId == taskId) null else _uiState.value.loadedTaskId,
+          loadedTaskId = if (wasLoaded) null else _uiState.value.loadedTaskId,
+          loadedTaskState = if (wasLoaded) null else _uiState.value.loadedTaskState,
           taskEditorId = if (_uiState.value.taskEditorId == taskId) null else _uiState.value.taskEditorId,
           taskEditorName = if (_uiState.value.taskEditorId == taskId) "" else _uiState.value.taskEditorName,
           taskEditorContent = if (_uiState.value.taskEditorId == taskId) "" else _uiState.value.taskEditorContent,
@@ -821,5 +1069,16 @@ class AgentViewModel(
 
   fun setLongTapMessage(text: String?) {
     _uiState.value = _uiState.value.copy(longTapMessageText = text)
+  }
+
+  fun setShowContextOverflowButton(value: Boolean) {
+    viewModelScope.launch {
+      try {
+        agentPreferences.setShowContextOverflowButton(value)
+        _uiState.value = _uiState.value.copy(showContextOverflowButton = value)
+      } catch (e: Exception) {
+        Log.e(LOG_TAG, "Failed to set showContextOverflowButton", e)
+      }
+    }
   }
 }

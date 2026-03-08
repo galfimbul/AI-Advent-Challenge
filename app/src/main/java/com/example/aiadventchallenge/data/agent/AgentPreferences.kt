@@ -20,6 +20,7 @@ private val USE_COMPRESSION = booleanPreferencesKey("use_compression")
 private val LAST_N_MESSAGES = intPreferencesKey("last_n_messages")
 private val CONTEXT_STRATEGY = stringPreferencesKey("context_strategy")
 private val ACTIVE_PROFILE_ID = longPreferencesKey("active_profile_id")
+private val SHOW_CONTEXT_OVERFLOW_BUTTON = booleanPreferencesKey("show_context_overflow_button")
 
 data class AgentCompressionSettings(
   val useCompression: Boolean = false,
@@ -89,5 +90,12 @@ class AgentPreferences(private val context: Context) {
     context.agentDataStore.edit {
       it[ACTIVE_PROFILE_ID] = id ?: 0L
     }
+  }
+
+  suspend fun getShowContextOverflowButton(): Boolean =
+    context.agentDataStore.data.first()[SHOW_CONTEXT_OVERFLOW_BUTTON] ?: false
+
+  suspend fun setShowContextOverflowButton(value: Boolean) {
+    context.agentDataStore.edit { it[SHOW_CONTEXT_OVERFLOW_BUTTON] = value }
   }
 }

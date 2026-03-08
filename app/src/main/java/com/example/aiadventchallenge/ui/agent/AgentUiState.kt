@@ -5,6 +5,7 @@ import com.example.aiadventchallenge.data.agent.UserProfileItem
 import com.example.aiadventchallenge.domain.agent.AgentMessage
 import com.example.aiadventchallenge.domain.agent.BranchInfo
 import com.example.aiadventchallenge.domain.agent.ContextStrategy
+import com.example.aiadventchallenge.domain.agent.TaskState
 
 /**
  * Состояние экрана «Агент»: история диалога (чат), ввод запроса, загрузка, ошибка, токены,
@@ -47,6 +48,8 @@ data class AgentUiState(
   val taskMemories: List<TaskMemoryItem> = emptyList(),
   /** Id задачи, загруженной в диалог (её контент подставляется в промпт). null — не загружена. */
   val loadedTaskId: Long? = null,
+  /** Состояние подключённой задачи (этап, шаг, пауза). null если задача не подключена. */
+  val loadedTaskState: TaskState? = null,
   /** Id задачи, открытой в редакторе памяти задачи (в настройках). */
   val taskEditorId: Long? = null,
   /** Имя задачи в редакторе. */
@@ -58,5 +61,7 @@ data class AgentUiState(
   /** В диалоге очистки: также очистить память задачи. */
   val clearDialogAlsoTaskMemory: Boolean = false,
   /** Текст сообщения для long-tap «Извлечь факты и сохранить» (если не null — показать диалог выбора слоя). */
-  val longTapMessageText: String? = null
+  val longTapMessageText: String? = null,
+  /** Показывать кнопку «Превысить контекст» (отладка), из настроек. */
+  val showContextOverflowButton: Boolean = false
 )

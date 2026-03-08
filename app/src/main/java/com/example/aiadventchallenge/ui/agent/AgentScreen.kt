@@ -66,7 +66,10 @@ import com.example.aiadventchallenge.data.agent.TaskMemoryItem
 import com.example.aiadventchallenge.data.agent.UserProfileItem
 import com.example.aiadventchallenge.domain.agent.ContextStrategy
 import com.example.aiadventchallenge.domain.agent.displayName
+import com.example.aiadventchallenge.domain.agent.TaskStage
+import com.example.aiadventchallenge.domain.agent.expectedActionText
 import com.example.aiadventchallenge.ui.components.LoadingOverlay
+import androidx.compose.runtime.DisposableEffect
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -93,6 +96,18 @@ fun AgentScreen(
       viewModel.clearToastMessage()
     }
   }
+
+  LaunchedEffect(Unit) {
+    viewModel.onEnterScreen()
+  }
+  DisposableEffect(Unit) {
+    onDispose { viewModel.onLeaveScreen() }
+  }
+
+  var showCommandsDialog by remember { mutableStateOf(false) }
+  var showCommandArgDialog by remember { mutableStateOf(false) }
+  var pendingCommand by remember { mutableStateOf("") }
+  var commandArgText by remember { mutableStateOf("") }
 
   Box(modifier = modifier.fillMaxSize()) {
     Column(
@@ -153,6 +168,29 @@ fun AgentScreen(
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant
       )
+      uiState.loadedTaskState?.let { state ->
+        Text(
+          text = "Этап: ${state.stage.displayName()}" +
+            (if (state.isPaused) ", на паузе" else ""),
+          style = MaterialTheme.typography.bodySmall,
+          color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Column(modifier = Modifier.fillMaxWidth()) {
+          Text(
+            text = "Ожидаемое действие:",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+          )
+          Text(
+            text = state.stage.expectedActionText(),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 2.dp)
+          )
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+      }
 
       if (uiState.contextStrategy == ContextStrategy.StickyFacts) {
         Spacer(modifier = Modifier.height(4.dp))
@@ -257,7 +295,7 @@ fun AgentScreen(
           ) {
             Icon(Icons.Filled.Settings, contentDescription = "Настройки агента")
           }
-          if (BuildConfig.DEBUG) {
+          if (uiState.showContextOverflowButton) {
             OutlinedButton(
               onClick = viewModel::sendContextOverflowTest,
               enabled = !uiState.isLoading
@@ -266,6 +304,13 @@ fun AgentScreen(
             }
             Spacer(modifier = Modifier.padding(horizontal = 8.dp))
           }
+          OutlinedButton(
+            onClick = { showCommandsDialog = true },
+            enabled = !uiState.isLoading
+          ) {
+            Text("Команды")
+          }
+          Spacer(modifier = Modifier.padding(horizontal = 8.dp))
           Button(
             onClick = viewModel::sendRequest,
             enabled = !uiState.isLoading && uiState.request.isNotBlank()
@@ -297,6 +342,72 @@ fun AgentScreen(
           )
         }
       }
+    }
+
+    if (showCommandsDialog) {
+      AlertDialog(
+        onDismissRequest = { showCommandsDialog = false },
+        title = { Text("Команды") },
+        text = {
+          Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            TextButton(onClick = {
+              viewModel.executeCommand("/confirm")
+              showCommandsDialog = false
+            }) { Text("/confirm — подтвердить результат, следующий этап") }
+            TextButton(onClick = {
+              viewModel.prepareReject()
+              showCommandsDialog = false
+            }) { Text("/reject — отклонить, добавить комментарий и отправить") }
+            TextButton(onClick = {
+              viewModel.executeCommand("/reset_planning")
+              showCommandsDialog = false
+            }) { Text("/reset_planning — сбросить задачу к планированию") }
+            TextButton(onClick = {
+              viewModel.executeCommand("/help")
+              showCommandsDialog = false
+            }) { Text("/help — подсказка по командам") }
+            TextButton(onClick = {
+              pendingCommand = "/add_long_term"
+              commandArgText = ""
+              showCommandsDialog = false
+              showCommandArgDialog = true
+            }) { Text("/add_long_term — добавить в долговременную память") }
+            TextButton(onClick = {
+              pendingCommand = "/add_task_memory"
+              commandArgText = ""
+              showCommandsDialog = false
+              showCommandArgDialog = true
+            }) { Text("/add_task_memory — добавить в память задачи") }
+          }
+        },
+        confirmButton = { TextButton(onClick = { showCommandsDialog = false }) { Text("Закрыть") } }
+      )
+    }
+    if (showCommandArgDialog) {
+      AlertDialog(
+        onDismissRequest = { showCommandArgDialog = false; pendingCommand = ""; commandArgText = "" },
+        title = { Text(if (pendingCommand == "/add_long_term") "Текст для долговременной памяти" else "Текст для памяти задачи") },
+        text = {
+          OutlinedTextField(
+            value = commandArgText,
+            onValueChange = { commandArgText = it },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Текст") },
+            minLines = 2
+          )
+        },
+        confirmButton = {
+          Button(onClick = {
+            viewModel.executeCommand("$pendingCommand $commandArgText".trim())
+            showCommandArgDialog = false
+            pendingCommand = ""
+            commandArgText = ""
+          }) { Text("Выполнить") }
+        },
+        dismissButton = {
+          TextButton(onClick = { showCommandArgDialog = false; pendingCommand = ""; commandArgText = "" }) { Text("Отмена") }
+        }
+      )
     }
 
     LoadingOverlay(visible = uiState.isLoading)
@@ -349,7 +460,9 @@ fun AgentScreen(
             onClearTaskMemories = viewModel::clearTaskMemories,
             onAddTaskMemory = viewModel::saveTaskMemory,
             onStrategySelected = viewModel::setContextStrategy,
-            onLastNSelected = viewModel::setLastN
+            onLastNSelected = viewModel::setLastN,
+            showContextOverflowButton = uiState.showContextOverflowButton,
+            onShowContextOverflowButtonChange = viewModel::setShowContextOverflowButton
           )
         }
       }
@@ -508,7 +621,9 @@ private fun AgentSettingsSheetContent(
   onClearTaskMemories: () -> Unit,
   onAddTaskMemory: (String, String) -> Unit,
   onStrategySelected: (ContextStrategy) -> Unit,
-  onLastNSelected: (Int) -> Unit
+  onLastNSelected: (Int) -> Unit,
+  showContextOverflowButton: Boolean = false,
+  onShowContextOverflowButtonChange: (Boolean) -> Unit = {}
 ) {
   val focusManager = LocalFocusManager.current
   var longTermInput by remember { mutableStateOf(longTermMemory) }
@@ -821,6 +936,23 @@ private fun AgentSettingsSheetContent(
           Text(if (n == lastN) "$n ✓" else "$n")
         }
       }
+    }
+    Text(
+      text = "Отладка",
+      style = MaterialTheme.typography.titleMedium
+    )
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      verticalAlignment = Alignment.CenterVertically
+    ) {
+      Checkbox(
+        checked = showContextOverflowButton,
+        onCheckedChange = onShowContextOverflowButtonChange
+      )
+      Text(
+        text = "Показать кнопку «Превысить контекст»",
+        style = MaterialTheme.typography.bodyMedium
+      )
     }
   }
 }

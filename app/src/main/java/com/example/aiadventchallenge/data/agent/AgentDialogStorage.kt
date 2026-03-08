@@ -4,6 +4,10 @@ import com.example.aiadventchallenge.domain.agent.AgentDialogState
 import com.example.aiadventchallenge.domain.agent.AgentMessage
 import com.example.aiadventchallenge.domain.agent.AgentRole
 import com.example.aiadventchallenge.domain.agent.BranchInfo
+import com.example.aiadventchallenge.domain.agent.TaskStage
+import com.example.aiadventchallenge.domain.agent.TaskState
+import com.example.aiadventchallenge.domain.agent.asString
+import com.example.aiadventchallenge.domain.agent.taskStageFromString
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -130,6 +134,20 @@ class AgentDialogStorage(
 
   suspend fun getTaskMemoryContent(id: Long): String? = withContext(Dispatchers.IO) {
     taskMemoryDao.getById(id)?.content
+  }
+
+  /** Состояние задачи (этап, шаг, пауза). Ожидаемое действие вычисляется по этапу в коде. */
+  suspend fun getTaskState(id: Long): TaskState? = withContext(Dispatchers.IO) {
+    val entity = taskMemoryDao.getById(id) ?: return@withContext null
+    TaskState(
+      stage = taskStageFromString(entity.stage),
+      currentStep = entity.currentStep,
+      isPaused = entity.isPaused != 0
+    )
+  }
+
+  suspend fun updateTaskState(id: Long, stage: TaskStage, currentStep: Int, isPaused: Boolean) = withContext(Dispatchers.IO) {
+    taskMemoryDao.updateTaskState(id, stage.asString(), currentStep, if (isPaused) 1 else 0)
   }
 
   suspend fun saveTaskMemory(name: String, content: String): Long = withContext(Dispatchers.IO) {

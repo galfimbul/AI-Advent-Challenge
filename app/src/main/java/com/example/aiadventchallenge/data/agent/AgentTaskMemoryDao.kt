@@ -27,4 +27,7 @@ interface AgentTaskMemoryDao {
 
   @Query("DELETE FROM agent_task_memories")
   suspend fun deleteAll()
+
+  @Query("UPDATE agent_task_memories SET stage = :stage, currentStep = :currentStep, isPaused = :isPaused WHERE id = :id")
+  suspend fun updateTaskState(id: Long, stage: String, currentStep: Int, isPaused: Int)
 }
