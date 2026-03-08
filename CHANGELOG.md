@@ -124,3 +124,25 @@
 - **ViewModel и UiState:** profiles, activeProfileId, profileEditorId, profileEditorName, profileEditorPreferences; loadProfiles(), setActiveProfile(id), addProfile(name, preferences) → setActiveProfile(newId), openProfileEditor(id), updateProfileEditorName/Preferences, saveProfileEditor(), closeProfileEditor(), deleteProfile(id). В sendRequest() передаётся userProfile из storage.getProfileContent(activeProfileId) в agent.process(..., userProfile).
 - **UI:** на экране диалога под стратегией отображается текущий профиль («Профиль: <имя>» или «Профиль: Без профиля»). В Bottom Sheet настроек секция «Профиль пользователя» первой: заголовок; чип «Без профиля»; список профилей (чип выбора, «Изменить», «Удалить» с подтверждением); «Добавить профиль» (форма: название + предпочтения, Сохранить/Отмена); при открытом редакторе — форма редактирования (имя, предпочтения, Сохранить/Отмена/Удалить). AlertDialog для подтверждения удаления.
 - **Документация:** README (секция «Профиль пользователя» в настройках агента), ARCHITECTURE и PROJECT (слой профилей, entity/DAO/Storage, подстановка в агенте и репозитории).
+
+## День 13 (Состояние задачи — Task State Machine)
+
+- **Конечный автомат задачи:** этапы Planning → Execution → Validation → Done. Пользователь только формирует задачу; переход по этапам только по подтверждению (/confirm) или отказу (/reject). Ожидаемое действие задаётся этапом в коде (не хранится в БД). currentStep инкрементируется только на этапе Execution при /confirm.
+- **Domain:** [TaskStage.kt](app/src/main/java/com/example/aiadventchallenge/domain/agent/TaskStage.kt) — enum Planning, Execution, Validation, Done; displayName(), expectedActionText(), asString(); taskStageFromString(); data class TaskState(stage, currentStep, isPaused).
+- **Room, миграция 6→7:** в agent_task_memories добавлены колонки stage (TEXT), currentStep (INTEGER), isPaused (INTEGER). AgentTaskMemoryDao.updateTaskState(id, stage, currentStep, isPaused). При создании задачи — дефолты planning, 0, 0.
+- **Storage:** getTaskState(id): TaskState?; updateTaskState(id, stage, currentStep, isPaused). Ожидаемое действие вычисляется по этапу в коде.
+- **SimpleAgent:** параметр taskState: TaskState?; в блок «Память текущей задачи» добавлен подблок: этап, шаг, ожидаемое действие (stage.expectedActionText()), пауза/активна.
+- **ViewModel:** loadedTaskState; загрузка при init, loadTaskIntoDialog, switchBranch; onLeaveScreen() / onEnterScreen() — пауза при выходе с экрана, снятие при входе. confirmTaskResult() / rejectTaskResult() с добавлением служебного сообщения в диалог и save. executeCommand(input) — общий обработчик команд (/confirm, /reject, /help, /add_long_term, /add_task_memory); вызов из поля ввода и из UI «Команды».
+- **UI:** на экране диалога отображаются этап, шаг, ожидаемое действие (кратко), «на паузе» при isPaused. Кнопка «Команды» открывает список команд с описаниями; при выборе выполнение через executeCommand (для команд с аргументом — диалог ввода). Кнопка «Превысить контекст» перенесена в настройки; видимость по флагу showContextOverflowButton (AgentPreferences, по умолчанию false).
+- **Валидация агентом:** на этапе Validation ожидаемое действие инструктирует агента проверить результат и предложить пользователю /confirm или /reject.
+
+### Уточнения логики Дня 13 (после первоначальной реализации)
+
+- **Планирование:** пользователь сам отправляет сообщение для получения плана; подтверждение плана — /confirm → автоматический переход в Выполнение и запрос «Выполняй шаги плана».
+- **Авто-валидация:** после ответа модели по выполнению автоматически (без /confirm) переход в Проверка: в чат добавляется «[Валидация решения…]», в модель уходит запрос на проверку; ответ выдаётся на ревью.
+- **/reject:** этап не меняется; кнопка «/reject» в диалоге «Команды» подставляет в поле ввода «/reject » для комментария; отправка строки «/reject» или «/reject комментарий» — запрос в модель на повторное выполнение плана с учётом комментария (rejectWithUserComment, prepareReject).
+- **Счётчик шагов:** убран из UI и из промпта агента (SimpleAgent, AgentScreen); currentStep остаётся в TaskState/Entity для совместимости.
+- **Пауза при выходе с экрана:** onLeaveScreen() выставляет isPaused в БД; onEnterScreen() сразу обновляет UI (loadedTaskState.copy(isPaused = false)) и в фоне сохраняет в БД; при загрузке диалога в init ViewModel, если задача была на паузе, сразу выставляется resumedState и обновляется БД — чтобы при пересоздании экрана /confirm был доступен.
+- **Удаление задачи:** при deleteTaskMemory очищаются также loadedTaskState и (если удалялась текущая) loadedTaskId в UI.
+- **Очистка диалога:** при подтверждении очистки без галочки «удалить память задачи» подключённая задача сбрасывается к этапу Планирование (stage, currentStep = 0) в БД.
+- **Команда /reset_planning** (и /planning): сброс подключённой задачи к этапу Планирование; кнопка в диалоге «Команды».

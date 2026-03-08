@@ -19,7 +19,8 @@ app/src/main/java/com/example/aiadventchallenge/
 ├── domain/
 │   ├── agent/
 │   │   ├── ContextStrategy.kt   # Enum: SlidingWindow, StickyFacts, Branching, Summary; displayName()
-│   │   └── SimpleAgent.kt       # Агент: process(dialog, request, contextStrategy, lastN); промпт по стратегии
+│   │   ├── TaskStage.kt         # Enum: Planning, Execution, Validation, Done; TaskState; expectedActionText(), taskStageFromString()
+│   │   └── SimpleAgent.kt       # Агент: process(dialog, request, ..., taskState); промпт по стратегии и состоянию задачи
 │   ├── ReasoningMode.kt         # Enum режимов рассуждения (не в data)
 │   └── TemperaturePreset.kt     # Константы и пресеты температуры (0–2, шаг 0.1)
 ├── data/
@@ -96,7 +97,8 @@ app/src/main/java/com/example/aiadventchallenge/
 | Сценарий сообщений для теста стратегий агента | [docs/AGENT_TEST_SCENARIO.md](docs/AGENT_TEST_SCENARIO.md): таблица из 13 сообщений и подсказки по проверке каждой стратегии |
 | Модель памяти агента (День 11) | Три слоя: память диалога (сессия), память задачи (agent_task_memories), долговременная (agent_long_term_memory). [docs/PLAN_DAY_11_MEMORY.md](docs/PLAN_DAY_11_MEMORY.md). Настройки агента: секции памяти; команды /add_long_term, /add_task_memory, /help; long-tap по сообщению. ChatRepository.extractFactsFromText. Подключённая задача хранится по ветке (agent_branches.loadedTaskId, миграция 4→5), восстанавливается при загрузке и смене ветки. |
 | Профили пользователя агента (День 12) | AgentPreferences (DataStore): context_strategy, last_n_messages, active_profile_id. Room: agent_user_profiles (AgentUserProfileEntity, AgentUserProfileDao), миграция 5→6. AgentDialogStorage: getAllProfiles, getProfileContent, saveProfile, deleteProfile. ChatRepository.sendMessage(systemMessage); SimpleAgent.process(..., userProfile) — блок в user-промпте и расширенный system message. В настройках агента секция «Профиль пользователя» первой: выбор, добавление, редактирование, удаление. |
-| Тест превышения контекста (только debug) | Кнопка «Превысить контекст» слева от «Отправить» на экране агента; `SimpleAgent.process(..., forceContextOverflow = true)`; `AgentViewModel.sendContextOverflowTest()` |
+| Состояние задачи агента (День 13) | domain/agent/TaskStage.kt (enum, TaskState); Room agent_task_memories: stage, currentStep, isPaused (миграция 6→7); Storage getTaskState, updateTaskState; SimpleAgent.process(..., taskState); ViewModel: loadedTaskState, onEnterScreen/onLeaveScreen, confirmTaskResult/rejectTaskResult, executeCommand; кнопка «Команды» (список команд); пауза при выходе с экрана. |
+| Тест превышения контекста | Кнопка «Превысить контекст» в настройках агента (чекбокс «Показать кнопку…»); по умолчанию скрыта; `AgentViewModel.sendContextOverflowTest()` |
 | Логи запросов/ответов | Logcat, тег `OpenAI` |
 
 ## Сборка и запуск
@@ -119,3 +121,4 @@ app/src/main/java/com/example/aiadventchallenge/
 - `challenge_day_10` — стратегии контекста: Sliding Window, Sticky Facts, Branching, Summary; Bottom Sheet настроек; сравнение на сценарии 10–15 сообщений
 - `challenge_day_11` — модель памяти: три слоя (диалог, задача, долговременная); Room agent_long_term_memory, agent_task_memories; команды в поле ввода; long-tap с извлечением фактов
 - `challenge_day_12` — персонализация: профили пользователя (имя + предпочтения); AgentPreferences (active_profile_id); Room agent_user_profiles; подстановка в user-промпт и system message; секция «Профиль пользователя» в настройках агента
+- `challenge_day_13` — состояние задачи (FSM): этапы Planning → Execution → Validation → Done; переход по /confirm и /reject; пауза при выходе с экрана; кнопка «Команды»; AgentPreferences showContextOverflowButton
