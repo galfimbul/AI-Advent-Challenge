@@ -20,10 +20,10 @@ enum class TaskStage {
 
 /** Текст ожидаемого действия для промпта агента (единый источник в коде). */
 fun TaskStage.expectedActionText(): String = when (this) {
-  TaskStage.Planning -> "предложи план"
-  TaskStage.Execution -> "выполняй шаги"
+  TaskStage.Planning -> "Составь план. Когда план готов — попроси пользователя подтвердить командой /confirm для перехода к выполнению."
+  TaskStage.Execution -> "Выполняй шаги плана. По завершении попроси пользователя подтвердить командой /confirm для перехода к проверке."
   TaskStage.Validation -> "Проверь результат. Если выполнение корректно — предложи пользователю подтвердить корректность (/confirm). Иначе укажи, что переделать, и предложи вернуться к этапу выполнения (/reject)."
-  TaskStage.Done -> "подведи итог"
+  TaskStage.Done -> "Подведи итог. Задача завершена."
 }
 
 fun TaskStage.asString(): String = when (this) {
