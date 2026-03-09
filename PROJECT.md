@@ -31,16 +31,16 @@ app/src/main/java/com/example/aiadventchallenge/
 │   │   ├── AgentSummaryDao.kt       # getAllSummaries, insert, deleteAll
 │   │   ├── AgentFactsEntity.kt       # Room Entity (id, factsText), таблица agent_facts
 │   │   ├── AgentFactsDao.kt          # getFacts, insert, deleteAll
-│   │   ├── AgentBranchEntity.kt      # Room Entity (id, name, checkpointAt, loadedTaskId), таблица agent_branches
-│   │   ├── AgentBranchDao.kt         # getAllBranches, getBranchById, insert, deleteAll, setLoadedTaskId
+│   │   ├── AgentBranchEntity.kt      # Room Entity (id, name, checkpointAt, loadedTaskId, stage, currentStep, isPaused), таблица agent_branches
+│   │   ├── AgentBranchDao.kt         # getAllBranches, getBranchById, insert, deleteAll, setLoadedTaskId, updateBranchTaskState, clearBranchTaskState
 │   │   ├── AgentLongTermMemoryEntity.kt  # Room Entity (id, content), таблица agent_long_term_memory
 │   │   ├── AgentLongTermMemoryDao.kt     # get, insert (REPLACE)
 │   │   ├── AgentTaskMemoryEntity.kt   # Room Entity (id, name, content), таблица agent_task_memories
 │   │   ├── AgentTaskMemoryDao.kt     # getAll, getById, insert, updateContent, deleteById, deleteAll
 │   │   ├── AgentUserProfileEntity.kt   # Room Entity (id, name, preferences), таблица agent_user_profiles
 │   │   ├── AgentUserProfileDao.kt      # getAll, getById, insert, update, deleteById
-│   │   ├── AppDatabase.kt          # Room Database, version 6, миграции 1→2 … 5→6
-│   │   ├── AgentDialogStorage.kt   # load, save, …; getAllProfiles, getProfileContent, saveProfile, deleteProfile; long-term, задачи, saveLoadedTaskIdForBranch
+│   │   ├── AppDatabase.kt          # Room Database, version 8, миграции 1→2 … 7→8
+│   │   ├── AgentDialogStorage.kt   # load, save, …; getBranchTaskState, updateBranchTaskState, clearBranchTaskState; профили, long-term, задачи, saveLoadedTaskIdForBranch
 │   │   └── AgentPreferences.kt      # DataStore: context_strategy, last_n_messages, active_profile_id
 │   ├── ChatRepository.kt        # sendMessage, extractFactsFromText, extractOrUpdateFacts (Sticky Facts), summarizeDialog, runWithModel, compareModelResponses
 │   ├── ModelRunResult.kt        # Результат одного запроса к модели (время, токены, стоимость)
@@ -97,7 +97,7 @@ app/src/main/java/com/example/aiadventchallenge/
 | Сценарий сообщений для теста стратегий агента | [docs/AGENT_TEST_SCENARIO.md](docs/AGENT_TEST_SCENARIO.md): таблица из 13 сообщений и подсказки по проверке каждой стратегии |
 | Модель памяти агента (День 11) | Три слоя: память диалога (сессия), память задачи (agent_task_memories), долговременная (agent_long_term_memory). [docs/PLAN_DAY_11_MEMORY.md](docs/PLAN_DAY_11_MEMORY.md). Настройки агента: секции памяти; команды /add_long_term, /add_task_memory, /help; long-tap по сообщению. ChatRepository.extractFactsFromText. Подключённая задача хранится по ветке (agent_branches.loadedTaskId, миграция 4→5), восстанавливается при загрузке и смене ветки. |
 | Профили пользователя агента (День 12) | AgentPreferences (DataStore): context_strategy, last_n_messages, active_profile_id. Room: agent_user_profiles (AgentUserProfileEntity, AgentUserProfileDao), миграция 5→6. AgentDialogStorage: getAllProfiles, getProfileContent, saveProfile, deleteProfile. ChatRepository.sendMessage(systemMessage); SimpleAgent.process(..., userProfile) — блок в user-промпте и расширенный system message. В настройках агента секция «Профиль пользователя» первой: выбор, добавление, редактирование, удаление. |
-| Состояние задачи агента (День 13) | domain/agent/TaskStage.kt (enum, TaskState); Room agent_task_memories: stage, currentStep, isPaused (миграция 6→7); Storage getTaskState, updateTaskState; SimpleAgent.process(..., taskState); ViewModel: loadedTaskState, onEnterScreen/onLeaveScreen, confirmTaskResult/rejectTaskResult, executeCommand; кнопка «Команды» (список команд); пауза при выходе с экрана. |
+| Состояние задачи агента (День 13→15) | domain/agent/TaskStage.kt (enum, TaskState); с Дня 15 — этапы хранятся per-branch в agent_branches (stage, currentStep, isPaused, миграция 7→8); Storage getBranchTaskState, updateBranchTaskState, clearBranchTaskState; SimpleAgent.process(..., taskState); ViewModel: loadedTaskState, /start_task, /stop_task, onEnterScreen/onLeaveScreen, confirmTaskResult/rejectWithUserComment, executeCommand; кнопка «Команды»; пауза при выходе с экрана. |
 | Инварианты агента (День 14) | Настройки агента, блок «Инварианты»; хранятся в AgentPreferences (DataStore, agent_invariants). SimpleAgent.process(invariantsText) добавляет блок в system message; при конфликте запроса с инвариантом агент отказывает и объясняет. Настройки разбиты на шесть сворачиваемых блоков (аккордеон). |
 | Контролируемые переходы (День 15) | Этапы задачи (Planning/Execution/Validation/Done) хранятся per-branch в agent_branches (миграция 7→8). /start_task запускает цикл, /stop_task останавливает. /confirm, /reject, /reset_planning работают без подключённой задачи. Промпт агента: блок состояния этапа отдельно от taskMemory. |
 | Тест превышения контекста | Кнопка «Превысить контекст» в настройках агента (чекбокс «Показать кнопку…»); по умолчанию скрыта; `AgentViewModel.sendContextOverflowTest()` |

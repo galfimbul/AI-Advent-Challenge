@@ -162,7 +162,7 @@
 - **Room, миграция 7→8:** в `agent_branches` добавлены stage (TEXT NULL), currentStep (INTEGER), isPaused (INTEGER). AgentBranchEntity, AgentBranchDao: updateBranchTaskState, clearBranchTaskState. AgentDialogStorage: getBranchTaskState, updateBranchTaskState, clearBranchTaskState.
 - **Явная активация:** новая команда `/start_task` — запускает цикл этапов для текущей ветки (stage = Planning). Без неё этапы неактивны (stage = null). `/stop_task` — останавливает цикл (stage = null).
 - **Деcвязка от задачи:** `/confirm`, `/reject`, `/reset_planning` больше не требуют подключённой задачи (loadedTaskId). Работают с branch-level state. При отсутствии активного цикла — toast «Запустите задачу: /start_task».
-- **Промпт агента:** блок состояния задачи (этап, ожидаемое действие) теперь выводится независимо от taskMemory. Добавлена инструкция: «Ты не можешь предлагать действия, нарушающие текущий этап» с описанием допустимых действий по каждому этапу.
+- **Промпт агента:** блок состояния задачи (этап, ожидаемое действие) теперь выводится независимо от taskMemory. Добавлена строгая инструкция: модель не может выполнять работу другого этапа; переход только по `/confirm`; после завершения работы на текущем этапе модель обязана напомнить пользователю подтвердить `/confirm`. expectedActionText() для каждого этапа явно содержит инструкцию напомнить про `/confirm`.
 - **Авто-цепочка:** сохранена: /confirm из Planning → авто Execution → авто Validation.
 - **Очистка диалога:** сбрасывает branch stage в null (вместо сброса task memory stage в Planning).
 - **UI:** в диалоге «Команды» добавлены `/start_task` и `/stop_task`.
