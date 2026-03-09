@@ -7,6 +7,7 @@ import com.example.aiadventchallenge.data.ChatRepository
 import com.example.aiadventchallenge.data.agent.AgentPreferences
 import com.example.aiadventchallenge.data.agent.AgentDialogStorage
 import com.example.aiadventchallenge.data.agent.TaskMemoryItem
+import com.example.aiadventchallenge.data.mcp.McpWeatherClient
 import com.example.aiadventchallenge.domain.agent.AgentDialogState
 import com.example.aiadventchallenge.domain.agent.AgentMessage
 import com.example.aiadventchallenge.domain.agent.AgentRole
@@ -237,6 +238,68 @@ class AgentViewModel(
   fun executeCommand(input: String) {
     val trimmed = input.trim()
     when {
+      trimmed.equals("/tools", ignoreCase = true) -> {
+        viewModelScope.launch {
+          _uiState.value = _uiState.value.copy(
+            request = "",
+            isMcpLoading = true,
+            error = null
+          )
+          try {
+            val tools = McpWeatherClient.listTools()
+            val description = if (tools.isEmpty()) {
+              "Инструменты MCP не найдены."
+            } else {
+              buildString {
+                appendLine("Доступные инструменты MCP:")
+                tools.forEachIndexed { index, tool ->
+                  append(index + 1)
+                  append(". ")
+                  append(tool.name)
+                  tool.description?.takeIf { it.isNotBlank() }?.let { desc ->
+                    append(" — ")
+                    append(desc)
+                  }
+                  appendLine()
+                }
+              }.trimEnd()
+            }
+            appendAssistantMessage(description)
+          } catch (e: Exception) {
+            val message = e.message ?: e.toString()
+            appendAssistantMessage("Не удалось получить список инструментов: $message")
+          } finally {
+            _uiState.value = _uiState.value.copy(isMcpLoading = false)
+          }
+        }
+      }
+      trimmed.startsWith("/weather", ignoreCase = true) -> {
+        val city = trimmed.removePrefix("/weather").removePrefix("/WEATHER").trim().trim('"')
+        if (city.isEmpty()) {
+          _uiState.value = _uiState.value.copy(
+            request = "",
+            toastMessage = "Укажи город: /weather Москва"
+          )
+          return
+        }
+        viewModelScope.launch {
+          _uiState.value = _uiState.value.copy(
+            request = "",
+            isMcpLoading = true,
+            error = null
+          )
+          try {
+            appendUserMessage("[Запрос погоды для города \"$city\" через MCP]")
+            val weather = McpWeatherClient.getWeather(city)
+            appendAssistantMessage(weather.rawText)
+          } catch (e: Exception) {
+            val message = e.message ?: e.toString()
+            appendAssistantMessage("Не удалось получить погоду: $message")
+          } finally {
+            _uiState.value = _uiState.value.copy(isMcpLoading = false)
+          }
+        }
+      }
       trimmed.equals("/help", ignoreCase = true) || trimmed.equals("/memory_help", ignoreCase = true) -> {
         _uiState.value = _uiState.value.copy(
           request = "",
@@ -325,6 +388,36 @@ class AgentViewModel(
 
   fun clearToastMessage() {
     _uiState.value = _uiState.value.copy(toastMessage = null)
+  }
+
+  private fun appendUserMessage(text: String) {
+    val branchId = _uiState.value.currentBranchId
+    val msg = AgentMessage(AgentRole.User, text)
+    val newMessages = _uiState.value.messages + msg
+    dialogState = dialogState.copy(messages = newMessages)
+    _uiState.value = _uiState.value.copy(messages = newMessages)
+    viewModelScope.launch {
+      try {
+        storage.save(dialogState)
+      } catch (e: Exception) {
+        Log.e(LOG_TAG, "Failed to save dialog after MCP user message", e)
+      }
+    }
+  }
+
+  private fun appendAssistantMessage(text: String) {
+    val branchId = _uiState.value.currentBranchId
+    val msg = AgentMessage(AgentRole.Assistant, text)
+    val newMessages = _uiState.value.messages + msg
+    dialogState = dialogState.copy(messages = newMessages)
+    _uiState.value = _uiState.value.copy(messages = newMessages)
+    viewModelScope.launch {
+      try {
+        storage.save(dialogState)
+      } catch (e: Exception) {
+        Log.e(LOG_TAG, "Failed to save dialog after MCP assistant message", e)
+      }
+    }
   }
 
   /** Пауза задачи ветки при выходе с экрана. */

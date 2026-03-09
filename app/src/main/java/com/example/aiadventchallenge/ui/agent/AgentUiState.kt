@@ -65,5 +65,7 @@ data class AgentUiState(
   /** Показывать кнопку «Превысить контекст» (отладка), из настроек. */
   val showContextOverflowButton: Boolean = false,
   /** Текст инвариантов (правила, которые агент не должен нарушать). Загружается из AgentPreferences. */
-  val invariantsText: String = ""
+  val invariantsText: String = "",
+  /** Идёт ли сейчас запрос к MCP (список инструментов или погода). */
+  val isMcpLoading: Boolean = false
 )

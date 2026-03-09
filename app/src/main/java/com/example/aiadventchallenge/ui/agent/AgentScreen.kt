@@ -390,6 +390,16 @@ fun AgentScreen(
               showCommandsDialog = false
               showCommandArgDialog = true
             }) { Text("/add_task_memory — добавить в память задачи") }
+            TextButton(onClick = {
+              viewModel.executeCommand("/tools")
+              showCommandsDialog = false
+            }) { Text("/tools — список MCP-инструментов") }
+            TextButton(onClick = {
+              pendingCommand = "/weather"
+              commandArgText = ""
+              showCommandsDialog = false
+              showCommandArgDialog = true
+            }) { Text("/weather — запросить погоду по городу") }
           }
         },
         confirmButton = { TextButton(onClick = { showCommandsDialog = false }) { Text("Закрыть") } }
@@ -398,7 +408,15 @@ fun AgentScreen(
     if (showCommandArgDialog) {
       AlertDialog(
         onDismissRequest = { showCommandArgDialog = false; pendingCommand = ""; commandArgText = "" },
-        title = { Text(if (pendingCommand == "/add_long_term") "Текст для долговременной памяти" else "Текст для памяти задачи") },
+        title = {
+          val titleText = when (pendingCommand) {
+            "/add_long_term" -> "Текст для долговременной памяти"
+            "/add_task_memory" -> "Текст для памяти задачи"
+            "/weather" -> "Город для запроса погоды"
+            else -> "Аргумент команды"
+          }
+          Text(titleText)
+        },
         text = {
           OutlinedTextField(
             value = commandArgText,
@@ -422,7 +440,7 @@ fun AgentScreen(
       )
     }
 
-    LoadingOverlay(visible = uiState.isLoading)
+    LoadingOverlay(visible = uiState.isLoading || uiState.isMcpLoading)
 
     if (uiState.settingsSheetOpen) {
       val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)

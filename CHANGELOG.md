@@ -167,3 +167,11 @@
 - **Очистка диалога:** сбрасывает branch stage в null (вместо сброса task memory stage в Planning).
 - **UI:** в диалоге «Команды» добавлены `/start_task` и `/stop_task`.
 - **Сценарий проверки:** см. [docs/AGENT_TEST_SCENARIO.md](docs/AGENT_TEST_SCENARIO.md) — секция «День 15».
+
+## День 16 (MCP погода)
+
+- **Подключение MCP:** агент получает погоду через Model Context Protocol. Сервер: `https://jiri-spilka--weather-mcp-server.apify.actor/mcp` (Apify Weather MCP Server). Токен Apify задаётся в `secret.properties` как `APIFY_API_KEY`, пробрасывается в `BuildConfig.APIFY_API_KEY` и подставляется в URL при подключении (`?token=…`).
+- **data/mcp:** `McpWeatherClient` — ленивая инициализация MCP-клиента (Kotlin SDK), StreamableHttpClientTransport поверх Ktor HttpClient (SSE, HttpTimeout 30/60/90 с). Методы `listTools()` и `getWeather(city)`; вызов инструмента `get_current_weather` с параметрами `city` и `lang=ru`.
+- **Команды в чате:** `/tools` — вывод списка MCP-инструментов в чат; `/weather Город` — запрос погоды, ответ в чат (на русском при поддержке сервером). Обработка в `AgentViewModel.executeCommand`; ответы и запросы сохраняются в историю диалога.
+- **UI:** в диалоге «Команды» добавлены пункты `/tools` и `/weather` (для погоды — диалог ввода города). Индикатор загрузки MCP через `isMcpLoading` в AgentUiState.
+- **Зависимости:** Model Context Protocol Kotlin SDK (io.modelcontextprotocol:kotlin-sdk), Ktor client (core, okhttp, sse) — используются только для MCP; основной HTTP-клиент приложения — Retrofit.

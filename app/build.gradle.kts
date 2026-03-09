@@ -1,3 +1,4 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.util.Properties
 
 plugins {
@@ -30,6 +31,9 @@ android {
     var apiKey = props.getProperty("OPENAI_API_KEY", "").trim()
     if (apiKey == "ваш ключ" || apiKey == "your_key" || apiKey.isEmpty()) apiKey = ""
     buildConfigField("String", "OPENAI_API_KEY", "\"$apiKey\"")
+
+    val weatherKey = props.getProperty("APIFY_API_KEY", "").trim()
+    buildConfigField("String", "APIFY_API_KEY", "\"$weatherKey\"")
   }
   buildFeatures {
     compose = true
@@ -46,8 +50,16 @@ android {
     sourceCompatibility = JavaVersion.VERSION_11
     targetCompatibility = JavaVersion.VERSION_11
   }
-  kotlinOptions {
-    jvmTarget = "11"
+  kotlin {
+    compilerOptions {
+      jvmTarget.set(JvmTarget.JVM_11)
+    }
+  }
+  packaging {
+    resources {
+      // Избегаем конфликтов Java-ресурсов (OkHttp logging-interceptor vs jspecify)
+      excludes += "META-INF/versions/**"
+    }
   }
 }
 
@@ -63,6 +75,11 @@ dependencies {
   implementation(libs.androidx.material3)
   implementation(libs.androidx.lifecycle.viewmodel.compose)
   implementation(libs.androidx.navigation.compose)
+  // MCP Kotlin SDK client and Ktor HTTP client (used only for MCP)
+  implementation(libs.mcp.kotlin.sdk.client)
+  implementation(libs.ktor.client.core)
+  implementation(libs.ktor.client.okhttp)
+//  implementation(libs.ktor.client.sse)
   implementation(libs.retrofit)
   implementation(libs.retrofit.gson)
   implementation(libs.okhttp)
