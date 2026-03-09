@@ -58,15 +58,16 @@ class AgentViewModel(
         val activeProfileId = agentPreferences.getActiveProfileId()
         val validActiveId = activeProfileId?.takeIf { id -> profiles.any { it.id == id } }
         val invariantsText = agentPreferences.getInvariantsText()
-        val taskState = loadedId?.let { storage.getTaskState(it) }
-        val resumedState = if (taskState?.isPaused == true) taskState.copy(isPaused = false) else taskState
-        if (taskState?.isPaused == true && loadedId != null) {
-          storage.updateTaskState(loadedId, taskState.stage, taskState.currentStep, isPaused = false)
+        val branchId = dialogState.currentBranchId
+        val branchTaskState = storage.getBranchTaskState(branchId)
+        val resumedState = if (branchTaskState?.isPaused == true) branchTaskState.copy(isPaused = false) else branchTaskState
+        if (branchTaskState?.isPaused == true) {
+          storage.updateBranchTaskState(branchId, branchTaskState.stage, branchTaskState.currentStep, isPaused = false)
         }
         _uiState.value = _uiState.value.copy(
           messages = dialogState.messages,
           branches = dialogState.branches,
-          currentBranchId = dialogState.currentBranchId,
+          currentBranchId = branchId,
           facts = dialogState.facts,
           longTermMemory = longTerm,
           taskMemories = taskList,
@@ -239,9 +240,11 @@ class AgentViewModel(
       trimmed.equals("/help", ignoreCase = true) || trimmed.equals("/memory_help", ignoreCase = true) -> {
         _uiState.value = _uiState.value.copy(
           request = "",
-          toastMessage = "Команды: /confirm — следующий этап; /reject — отклонить, в поле добавится /reject для комментария; /reset_planning — сброс к планированию; /add_long_term текст; /add_task_memory текст; /help"
+          toastMessage = "Команды: /start_task — запустить задачу; /stop_task — остановить; /confirm — следующий этап; /reject — отклонить; /reset_planning — сброс к планированию; /add_long_term; /add_task_memory; /help"
         )
       }
+      trimmed.equals("/start_task", ignoreCase = true) -> startTask()
+      trimmed.equals("/stop_task", ignoreCase = true) -> stopTask()
       trimmed.equals("/confirm", ignoreCase = true) -> confirmTaskResult()
       trimmed.equals("/reset_planning", ignoreCase = true) || trimmed.equals("/planning", ignoreCase = true) -> resetTaskToPlanning()
       trimmed.startsWith("/add_long_term", ignoreCase = true) -> {
@@ -324,13 +327,13 @@ class AgentViewModel(
     _uiState.value = _uiState.value.copy(toastMessage = null)
   }
 
-  /** Пауза подключённой задачи при выходе с экрана. */
+  /** Пауза задачи ветки при выходе с экрана. */
   fun onLeaveScreen() {
-    val id = _uiState.value.loadedTaskId ?: return
     val state = _uiState.value.loadedTaskState ?: return
+    val branchId = _uiState.value.currentBranchId
     viewModelScope.launch {
       try {
-        storage.updateTaskState(id, state.stage, state.currentStep, isPaused = true)
+        storage.updateBranchTaskState(branchId, state.stage, state.currentStep, isPaused = true)
       } catch (e: Exception) {
         Log.e(LOG_TAG, "Failed to pause task on leave", e)
       }
@@ -339,12 +342,12 @@ class AgentViewModel(
 
   /** Снять паузу при входе на экран: сразу обновить UI, затем сохранить в БД. */
   fun onEnterScreen() {
-    val id = _uiState.value.loadedTaskId ?: return
     val state = _uiState.value.loadedTaskState ?: return
+    val branchId = _uiState.value.currentBranchId
     _uiState.value = _uiState.value.copy(loadedTaskState = state.copy(isPaused = false))
     viewModelScope.launch {
       try {
-        storage.updateTaskState(id, state.stage, state.currentStep, isPaused = false)
+        storage.updateBranchTaskState(branchId, state.stage, state.currentStep, isPaused = false)
       } catch (e: Exception) {
         Log.e(LOG_TAG, "Failed to resume task on enter", e)
       }
@@ -366,12 +369,8 @@ class AgentViewModel(
   }
 
   fun confirmTaskResult() {
-    val id = _uiState.value.loadedTaskId ?: run {
-      _uiState.value = _uiState.value.copy(request = "", toastMessage = "Подключите задачу к диалогу")
-      return
-    }
     val state = _uiState.value.loadedTaskState ?: run {
-      _uiState.value = _uiState.value.copy(request = "", toastMessage = "Состояние задачи не загружено")
+      _uiState.value = _uiState.value.copy(request = "", toastMessage = "Запустите задачу: /start_task")
       return
     }
     if (state.isPaused) {
@@ -383,17 +382,18 @@ class AgentViewModel(
       return
     }
     val next = nextStage(state.stage) ?: return
+    val branchId = _uiState.value.currentBranchId
     var newStep = state.currentStep
     if (state.stage == TaskStage.Execution) newStep = state.currentStep + 1
     viewModelScope.launch {
       try {
-        storage.updateTaskState(id, next, newStep, isPaused = false)
+        storage.updateBranchTaskState(branchId, next, newStep, isPaused = false)
         val msg = AgentMessage(AgentRole.User, "[Подтверждено: переход к этапу ${next.displayName()}]")
-        dialogState = storage.load(_uiState.value.currentBranchId)
+        dialogState = storage.load(branchId)
         val newMessages = dialogState.messages + msg
         storage.save(dialogState.copy(messages = newMessages))
         dialogState = dialogState.copy(messages = newMessages)
-        val updatedState = storage.getTaskState(id)
+        val updatedState = storage.getBranchTaskState(branchId)
         _uiState.value = _uiState.value.copy(
           request = "",
           messages = newMessages,
@@ -408,9 +408,8 @@ class AgentViewModel(
             updatedState,
             onSuccessChain = { execDialog, execState ->
               if (execState?.stage != TaskStage.Execution) return@runAgentRequest
-              val taskId = _uiState.value.loadedTaskId ?: return@runAgentRequest
-              storage.updateTaskState(taskId, TaskStage.Validation, execState.currentStep, isPaused = false)
-              val validationState = storage.getTaskState(taskId) ?: return@runAgentRequest
+              storage.updateBranchTaskState(branchId, TaskStage.Validation, execState.currentStep, isPaused = false)
+              val validationState = storage.getBranchTaskState(branchId) ?: return@runAgentRequest
               val validationMsg = AgentMessage(AgentRole.User, "[Валидация решения…]")
               val withValidationMsg = execDialog.messages + validationMsg
               dialogState = execDialog.copy(messages = withValidationMsg)
@@ -449,12 +448,8 @@ class AgentViewModel(
    * в диалог пишется отметка об отклонении, в модель уходит запрос на повторное выполнение плана с учётом комментария.
    */
   fun rejectWithUserComment(fullMessage: String) {
-    val id = _uiState.value.loadedTaskId ?: run {
-      _uiState.value = _uiState.value.copy(request = "", toastMessage = "Подключите задачу к диалогу")
-      return
-    }
     val state = _uiState.value.loadedTaskState ?: run {
-      _uiState.value = _uiState.value.copy(request = "", toastMessage = "Состояние задачи не загружено")
+      _uiState.value = _uiState.value.copy(request = "", toastMessage = "Запустите задачу: /start_task")
       return
     }
     if (state.isPaused) {
@@ -498,16 +493,17 @@ class AgentViewModel(
     }
   }
 
-  /** Сбросить подключённую задачу к этапу «Планирование», шаг 0. Команда /reset_planning или /planning. */
+  /** Сбросить задачу ветки к этапу «Планирование», шаг 0. Команда /reset_planning или /planning. */
   fun resetTaskToPlanning() {
-    val id = _uiState.value.loadedTaskId ?: run {
-      _uiState.value = _uiState.value.copy(request = "", toastMessage = "Подключите задачу к диалогу")
+    if (_uiState.value.loadedTaskState == null) {
+      _uiState.value = _uiState.value.copy(request = "", toastMessage = "Запустите задачу: /start_task")
       return
     }
+    val branchId = _uiState.value.currentBranchId
     viewModelScope.launch {
       try {
-        storage.updateTaskState(id, TaskStage.Planning, 0, isPaused = false)
-        val updated = storage.getTaskState(id)
+        storage.updateBranchTaskState(branchId, TaskStage.Planning, 0, isPaused = false)
+        val updated = storage.getBranchTaskState(branchId)
         _uiState.value = _uiState.value.copy(
           request = "",
           loadedTaskState = updated,
@@ -515,6 +511,63 @@ class AgentViewModel(
         )
       } catch (e: Exception) {
         Log.e(LOG_TAG, "Failed to reset task to planning", e)
+        _uiState.value = _uiState.value.copy(request = "", error = "Ошибка: ${e.message}")
+      }
+    }
+  }
+
+  /** Запустить жизненный цикл задачи — устанавливает этап Planning для текущей ветки. */
+  fun startTask() {
+    if (_uiState.value.loadedTaskState != null) {
+      _uiState.value = _uiState.value.copy(request = "", toastMessage = "Задача уже запущена. Этап: ${_uiState.value.loadedTaskState!!.stage.displayName()}")
+      return
+    }
+    val branchId = _uiState.value.currentBranchId
+    viewModelScope.launch {
+      try {
+        storage.updateBranchTaskState(branchId, TaskStage.Planning, 0, isPaused = false)
+        val state = storage.getBranchTaskState(branchId)
+        val msg = AgentMessage(AgentRole.User, "[Задача запущена: этап ${TaskStage.Planning.displayName()}]")
+        dialogState = storage.load(branchId)
+        val newMessages = dialogState.messages + msg
+        storage.save(dialogState.copy(messages = newMessages))
+        dialogState = dialogState.copy(messages = newMessages)
+        _uiState.value = _uiState.value.copy(
+          request = "",
+          messages = newMessages,
+          loadedTaskState = state,
+          toastMessage = "Задача запущена: ${TaskStage.Planning.displayName()}"
+        )
+      } catch (e: Exception) {
+        Log.e(LOG_TAG, "Failed to start task", e)
+        _uiState.value = _uiState.value.copy(request = "", error = "Ошибка: ${e.message}")
+      }
+    }
+  }
+
+  /** Остановить жизненный цикл задачи — сбросить этап ветки в null. */
+  fun stopTask() {
+    if (_uiState.value.loadedTaskState == null) {
+      _uiState.value = _uiState.value.copy(request = "", toastMessage = "Задача не запущена")
+      return
+    }
+    val branchId = _uiState.value.currentBranchId
+    viewModelScope.launch {
+      try {
+        storage.clearBranchTaskState(branchId)
+        val msg = AgentMessage(AgentRole.User, "[Задача остановлена]")
+        dialogState = storage.load(branchId)
+        val newMessages = dialogState.messages + msg
+        storage.save(dialogState.copy(messages = newMessages))
+        dialogState = dialogState.copy(messages = newMessages)
+        _uiState.value = _uiState.value.copy(
+          request = "",
+          messages = newMessages,
+          loadedTaskState = null,
+          toastMessage = "Задача остановлена"
+        )
+      } catch (e: Exception) {
+        Log.e(LOG_TAG, "Failed to stop task", e)
         _uiState.value = _uiState.value.copy(request = "", error = "Ошибка: ${e.message}")
       }
     }
@@ -566,13 +619,13 @@ class AgentViewModel(
         val taskList = _uiState.value.taskMemories
         val restoredLoadedId = dialogState.loadedTaskId
         val loadedId = restoredLoadedId?.takeIf { id -> taskList.any { it.id == id } }
-        val taskState = loadedId?.let { storage.getTaskState(it) }
+        val branchTaskState = storage.getBranchTaskState(branchId)
         _uiState.value = _uiState.value.copy(
           messages = dialogState.messages,
           currentBranchId = dialogState.currentBranchId,
           facts = dialogState.facts,
           loadedTaskId = loadedId,
-          loadedTaskState = taskState
+          loadedTaskState = branchTaskState
         )
       } catch (e: Exception) {
         Log.e(LOG_TAG, "Failed to switch branch", e)
@@ -700,13 +753,9 @@ class AgentViewModel(
           storage.clearTaskMemories()
         }
         dialogState = storage.load(1L)
+        storage.clearBranchTaskState(1L)
         val taskList = storage.getTaskMemories()
         val keptLoadedId = if (alsoTaskMemory) null else _uiState.value.loadedTaskId
-        var keptTaskState = keptLoadedId?.let { storage.getTaskState(it) }
-        if (keptLoadedId != null) {
-          storage.updateTaskState(keptLoadedId, TaskStage.Planning, 0, isPaused = false)
-          keptTaskState = storage.getTaskState(keptLoadedId)
-        }
         _uiState.value = _uiState.value.copy(
           showClearConfirmDialog = false,
           messages = dialogState.messages,
@@ -715,7 +764,7 @@ class AgentViewModel(
           facts = "",
           taskMemories = taskList,
           loadedTaskId = keptLoadedId,
-          loadedTaskState = keptTaskState,
+          loadedTaskState = null,
           promptTokens = null,
           completionTokens = null,
           totalTokens = null,
@@ -923,13 +972,11 @@ class AgentViewModel(
     viewModelScope.launch {
       try {
         storage.saveLoadedTaskIdForBranch(_uiState.value.currentBranchId, taskId)
-        val taskState = storage.getTaskState(taskId)
-        _uiState.value = _uiState.value.copy(loadedTaskId = taskId, loadedTaskState = taskState)
       } catch (e: Exception) {
         Log.e(LOG_TAG, "Failed to save loaded task for branch", e)
       }
     }
-    _uiState.value = _uiState.value.copy(loadedTaskId = taskId, loadedTaskState = null)
+    _uiState.value = _uiState.value.copy(loadedTaskId = taskId)
   }
 
   fun unloadTaskFromDialog() {
@@ -940,7 +987,7 @@ class AgentViewModel(
         Log.e(LOG_TAG, "Failed to clear loaded task for branch", e)
       }
     }
-    _uiState.value = _uiState.value.copy(loadedTaskId = null, loadedTaskState = null)
+    _uiState.value = _uiState.value.copy(loadedTaskId = null)
   }
 
   fun openTaskEditor(taskId: Long) {
@@ -1009,7 +1056,6 @@ class AgentViewModel(
         _uiState.value = _uiState.value.copy(
           taskMemories = newList,
           loadedTaskId = if (wasLoaded) null else _uiState.value.loadedTaskId,
-          loadedTaskState = if (wasLoaded) null else _uiState.value.loadedTaskState,
           taskEditorId = if (_uiState.value.taskEditorId == taskId) null else _uiState.value.taskEditorId,
           taskEditorName = if (_uiState.value.taskEditorId == taskId) "" else _uiState.value.taskEditorName,
           taskEditorContent = if (_uiState.value.taskEditorId == taskId) "" else _uiState.value.taskEditorContent,

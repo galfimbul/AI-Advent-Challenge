@@ -177,6 +177,26 @@ class AgentDialogStorage(
     branchDao.setLoadedTaskId(branchId, taskId)
   }
 
+  // --- Branch-level task state (День 15) ---
+
+  suspend fun getBranchTaskState(branchId: Long): TaskState? = withContext(Dispatchers.IO) {
+    val branch = branchDao.getBranchById(branchId) ?: return@withContext null
+    val stageName = branch.stage ?: return@withContext null
+    TaskState(
+      stage = taskStageFromString(stageName),
+      currentStep = branch.currentStep,
+      isPaused = branch.isPaused != 0
+    )
+  }
+
+  suspend fun updateBranchTaskState(branchId: Long, stage: TaskStage, currentStep: Int, isPaused: Boolean) = withContext(Dispatchers.IO) {
+    branchDao.updateBranchTaskState(branchId, stage.asString(), currentStep, if (isPaused) 1 else 0)
+  }
+
+  suspend fun clearBranchTaskState(branchId: Long) = withContext(Dispatchers.IO) {
+    branchDao.clearBranchTaskState(branchId)
+  }
+
   // --- Профили пользователя ---
 
   suspend fun getAllProfiles(): List<UserProfileItem> = withContext(Dispatchers.IO) {

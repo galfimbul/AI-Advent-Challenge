@@ -355,6 +355,14 @@ fun AgentScreen(
         text = {
           Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             TextButton(onClick = {
+              viewModel.executeCommand("/start_task")
+              showCommandsDialog = false
+            }) { Text("/start_task — запустить задачу (цикл этапов)") }
+            TextButton(onClick = {
+              viewModel.executeCommand("/stop_task")
+              showCommandsDialog = false
+            }) { Text("/stop_task — остановить задачу") }
+            TextButton(onClick = {
               viewModel.executeCommand("/confirm")
               showCommandsDialog = false
             }) { Text("/confirm — подтвердить результат, следующий этап") }

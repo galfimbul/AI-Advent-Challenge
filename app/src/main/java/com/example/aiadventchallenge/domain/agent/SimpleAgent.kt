@@ -84,23 +84,27 @@ class SimpleAgent(
         append(longTermMemory)
         append("\n\n")
       }
+      if (taskState != null) {
+        append("Состояние задачи: этап — ")
+        append(taskState.stage.displayName())
+        append(", ожидаемое действие: ")
+        append(taskState.stage.expectedActionText())
+        append(".")
+        if (taskState.isPaused) {
+          append(" Задача на паузе (пользователь покинул экран).")
+        } else {
+          append(" Задача активна. Продолжай с этого места, не повторяй предыдущие объяснения.")
+        }
+        append("\nТы не можешь предлагать действия, нарушающие текущий этап. ")
+        append("На этапе Планирование — только составляй план. ")
+        append("На этапе Выполнение — только выполняй шаги плана. ")
+        append("На этапе Проверка — только проверяй результат.")
+        append("\n\n")
+      }
       if (!taskMemory.isNullOrBlank()) {
         append("Память текущей задачи:\n")
         append(taskMemory)
-        if (taskState != null) {
-          append("\nСостояние задачи: этап — ")
-          append(taskState.stage.displayName())
-          append(", ожидаемое действие: ")
-          append(taskState.stage.expectedActionText())
-          append(".")
-          if (taskState.isPaused) {
-            append(" Задача на паузе (пользователь покинул экран).")
-          } else {
-            append(" Задача активна. Продолжай с этого места, не повторяй предыдущие объяснения.")
-          }
-          append("\n")
-        }
-        append("\n")
+        append("\n\n")
       }
       if (contextStrategy == ContextStrategy.StickyFacts) {
         append("Учитывай блок «Факты» как источник целей, ограничений и договорённостей; не противоречь им в ответе.\n\n")

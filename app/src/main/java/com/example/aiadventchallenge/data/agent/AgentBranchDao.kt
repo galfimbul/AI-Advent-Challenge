@@ -22,4 +22,10 @@ interface AgentBranchDao {
 
   @Query("UPDATE agent_branches SET loadedTaskId = :taskId WHERE id = :branchId")
   suspend fun setLoadedTaskId(branchId: Long, taskId: Long?)
+
+  @Query("UPDATE agent_branches SET stage = :stage, currentStep = :currentStep, isPaused = :isPaused WHERE id = :branchId")
+  suspend fun updateBranchTaskState(branchId: Long, stage: String?, currentStep: Int, isPaused: Int)
+
+  @Query("UPDATE agent_branches SET stage = NULL, currentStep = 0, isPaused = 0 WHERE id = :branchId")
+  suspend fun clearBranchTaskState(branchId: Long)
 }

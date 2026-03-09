@@ -15,7 +15,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
     AgentTaskMemoryEntity::class,
     AgentUserProfileEntity::class
   ],
-  version = 7
+  version = 8
 )
 abstract class AppDatabase : RoomDatabase() {
   abstract fun agentMessageDao(): AgentMessageDao
@@ -113,5 +113,13 @@ val MIGRATION_6_7 = object : Migration(6, 7) {
     db.execSQL("ALTER TABLE agent_task_memories ADD COLUMN stage TEXT NOT NULL DEFAULT 'planning'")
     db.execSQL("ALTER TABLE agent_task_memories ADD COLUMN currentStep INTEGER NOT NULL DEFAULT 0")
     db.execSQL("ALTER TABLE agent_task_memories ADD COLUMN isPaused INTEGER NOT NULL DEFAULT 0")
+  }
+}
+
+val MIGRATION_7_8 = object : Migration(7, 8) {
+  override fun migrate(db: SupportSQLiteDatabase) {
+    db.execSQL("ALTER TABLE agent_branches ADD COLUMN stage TEXT DEFAULT NULL")
+    db.execSQL("ALTER TABLE agent_branches ADD COLUMN currentStep INTEGER NOT NULL DEFAULT 0")
+    db.execSQL("ALTER TABLE agent_branches ADD COLUMN isPaused INTEGER NOT NULL DEFAULT 0")
   }
 }

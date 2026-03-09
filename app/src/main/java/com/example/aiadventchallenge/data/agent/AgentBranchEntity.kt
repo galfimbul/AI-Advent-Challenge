@@ -11,5 +11,9 @@ data class AgentBranchEntity(
   /** sortOrder последнего сообщения на момент создания ветки (для второй ветки). */
   val checkpointAt: Int = 0,
   /** Id задачи, подключённой к этому диалогу (ветке). null — не подключена. */
-  val loadedTaskId: Long? = null
+  val loadedTaskId: Long? = null,
+  /** Текущий этап задачи (branch-level). null = нет активного цикла (Idle). */
+  val stage: String? = null,
+  val currentStep: Int = 0,
+  val isPaused: Int = 0
 )
