@@ -82,6 +82,7 @@ app/src/main/java/com/example/aiadventchallenge/
 |--------|----------------|
 | API-ключ OpenAI | `secret.properties` (не в репозитории), читается в `app/build.gradle.kts` → `BuildConfig.OPENAI_API_KEY` |
 | Токен Apify (MCP погода) | `secret.properties` → `BuildConfig.APIFY_API_KEY`; используется в `data/mcp/McpWeatherClient` для доступа к Weather MCP Server |
+| URL своего MCP-сервера (День 17) | `secret.properties` → `BuildConfig.MCP_CUSTOM_SERVER_URL` (полный URL до `/mcp`); используется в `data/mcp/McpCustomClient` |
 | Модель по умолчанию | `OpenAiDto.kt` → `ChatCompletionRequest.model` (сейчас `gpt-4.1`) |
 | Лимит токенов, stop sequence | `ChatRepository.kt` → `MAX_TOKENS`, `STOP_SEQUENCE`; передаются из ViewModel |
 | Параметры запроса (max_tokens, stop) | `ChatRepository.sendMessage()` формирует `ChatCompletionRequest` |
@@ -103,12 +104,13 @@ app/src/main/java/com/example/aiadventchallenge/
 | Контролируемые переходы (День 15) | Этапы задачи (Planning/Execution/Validation/Done) хранятся per-branch в agent_branches (миграция 7→8). /start_task запускает цикл, /stop_task останавливает. /confirm, /reject, /reset_planning работают без подключённой задачи. Промпт агента: блок состояния этапа отдельно от taskMemory. |
 | Тест превышения контекста | Кнопка «Превысить контекст» в настройках агента (чекбокс «Показать кнопку…»); по умолчанию скрыта; `AgentViewModel.sendContextOverflowTest()` |
 | MCP погода (День 16) | Команды `/tools` и `/weather Город` в чате агента; сервер `https://jiri-spilka--weather-mcp-server.apify.actor/mcp`; токен в `secret.properties` → `APIFY_API_KEY`; клиент `data/mcp/McpWeatherClient`, Kotlin MCP SDK + Ktor (только для MCP). |
+| Свой MCP-сервер (День 17) | Модуль `mcp-server/` (Ktor + MCP Kotlin SDK), инструмент `mock_echo`; команда `/mock Текст` в чате агента; URL в `secret.properties` → `MCP_CUSTOM_SERVER_URL`; клиент `data/mcp/McpCustomClient`; развёртывание — [mcp-server/DEPLOY.md](mcp-server/DEPLOY.md). |
 | Логи запросов/ответов | Logcat, тег `OpenAI` |
 
 ## Сборка и запуск
 
 - Сборка: `./gradlew assembleDebug` или Android Studio → Build → Make Project
-- Ключи: скопировать `secret.properties.example` → `secret.properties`, подставить `OPENAI_API_KEY` и при необходимости `APIFY_API_KEY` (для MCP погоды)
+- Ключи: скопировать `secret.properties.example` → `secret.properties`, подставить `OPENAI_API_KEY`, при необходимости `APIFY_API_KEY` (MCP погода) и `MCP_CUSTOM_SERVER_URL` (свой MCP, День 17)
 - Подробно: [README.md](README.md)#установка-и-настройка
 
 ## Ветки
@@ -129,3 +131,4 @@ app/src/main/java/com/example/aiadventchallenge/
 - `challenge_day_14` — инварианты агента (настройки, DataStore); сворачиваемые блоки в настройках; отказ при конфликте запроса с инвариантом
 - `challenge_day_15` — контролируемые переходы: этапы задачи per-branch; /start_task, /stop_task; десвязка этапов от памяти задачи
 - `challenge_day_16` — MCP: подключение к Weather MCP Server (Apify), команды /tools и /weather; Kotlin MCP SDK, Ktor (только для MCP); BuildConfig.APIFY_API_KEY
+- `challenge_day_17` — свой MCP-сервер (модуль mcp-server, mock_echo); команда /mock; BuildConfig.MCP_CUSTOM_SERVER_URL; McpCustomClient

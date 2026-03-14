@@ -175,3 +175,11 @@
 - **Команды в чате:** `/tools` — вывод списка MCP-инструментов в чат; `/weather Город` — запрос погоды, ответ в чат (на русском при поддержке сервером). Обработка в `AgentViewModel.executeCommand`; ответы и запросы сохраняются в историю диалога.
 - **UI:** в диалоге «Команды» добавлены пункты `/tools` и `/weather` (для погоды — диалог ввода города). Индикатор загрузки MCP через `isMcpLoading` в AgentUiState.
 - **Зависимости:** Model Context Protocol Kotlin SDK (io.modelcontextprotocol:kotlin-sdk), Ktor client (core, okhttp, sse) — используются только для MCP; основной HTTP-клиент приложения — Retrofit.
+
+## День 17 (свой MCP-сервер)
+
+- **MCP-сервер (модуль `mcp-server/`):** отдельный Gradle-модуль (Kotlin, Ktor, MCP Kotlin SDK server). Транспорт: Streamable HTTP на пути `/mcp` (`mcpStreamableHttp`). Инструмент `mock_echo`: входной параметр `message` (строка), возврат текста вида `Echo: <message> | Время: <ISO-8601>`. Порт задаётся переменной окружения `PORT` (по умолчанию 8080). Сборка: `./gradlew :mcp-server:installDist` или `:mcp-server:run`; развёртывание на VPS описано в [mcp-server/DEPLOY.md](mcp-server/DEPLOY.md).
+- **Приложение:** в `secret.properties` добавлено свойство `MCP_CUSTOM_SERVER_URL` (полный URL до `/mcp`), читается в `BuildConfig.MCP_CUSTOM_SERVER_URL`. Новый клиент `data/mcp/McpCustomClient`: ленивое подключение по Streamable HTTP к указанному URL, метод `callMockEcho(message: String): String` (вызов инструмента `mock_echo`).
+- **Команда в чате агента:** `/mock Текст` — вызов mock-инструмента на своём MCP-сервере; запрос и ответ выводятся в чат (как у `/weather`). При пустом `MCP_CUSTOM_SERVER_URL` показывается toast с просьбой указать URL в secret.properties.
+- **UI:** в диалоге «Команды» добавлен пункт «/mock — вызвать mock-инструмент MCP» с диалогом ввода текста.
+- **Ветка:** `challenge_day_17`.
