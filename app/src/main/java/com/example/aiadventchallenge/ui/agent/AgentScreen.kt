@@ -400,6 +400,12 @@ fun AgentScreen(
               showCommandsDialog = false
               showCommandArgDialog = true
             }) { Text("/weather — запросить погоду по городу") }
+            TextButton(onClick = {
+              pendingCommand = "/mock"
+              commandArgText = ""
+              showCommandsDialog = false
+              showCommandArgDialog = true
+            }) { Text("/mock — вызвать mock-инструмент MCP") }
           }
         },
         confirmButton = { TextButton(onClick = { showCommandsDialog = false }) { Text("Закрыть") } }
@@ -413,6 +419,7 @@ fun AgentScreen(
             "/add_long_term" -> "Текст для долговременной памяти"
             "/add_task_memory" -> "Текст для памяти задачи"
             "/weather" -> "Город для запроса погоды"
+            "/mock" -> "Текст для mock (mock_echo)"
             else -> "Аргумент команды"
           }
           Text(titleText)

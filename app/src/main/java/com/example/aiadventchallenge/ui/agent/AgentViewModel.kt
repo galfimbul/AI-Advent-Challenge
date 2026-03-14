@@ -3,10 +3,12 @@ package com.example.aiadventchallenge.ui.agent
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.aiadventchallenge.BuildConfig
 import com.example.aiadventchallenge.data.ChatRepository
 import com.example.aiadventchallenge.data.agent.AgentPreferences
 import com.example.aiadventchallenge.data.agent.AgentDialogStorage
 import com.example.aiadventchallenge.data.agent.TaskMemoryItem
+import com.example.aiadventchallenge.data.mcp.McpCustomClient
 import com.example.aiadventchallenge.data.mcp.McpWeatherClient
 import com.example.aiadventchallenge.domain.agent.AgentDialogState
 import com.example.aiadventchallenge.domain.agent.AgentMessage
@@ -295,6 +297,33 @@ class AgentViewModel(
           } catch (e: Exception) {
             val message = e.message ?: e.toString()
             appendAssistantMessage("Не удалось получить погоду: $message")
+          } finally {
+            _uiState.value = _uiState.value.copy(isMcpLoading = false)
+          }
+        }
+      }
+      trimmed.startsWith("/mock", ignoreCase = true) -> {
+        val text = trimmed.removePrefix("/mock").removePrefix("/MOCK").trim().trim('"')
+        if (BuildConfig.MCP_CUSTOM_SERVER_URL.isBlank()) {
+          _uiState.value = _uiState.value.copy(
+            request = "",
+            toastMessage = "Укажите MCP_CUSTOM_SERVER_URL в secret.properties"
+          )
+          return
+        }
+        viewModelScope.launch {
+          _uiState.value = _uiState.value.copy(
+            request = "",
+            isMcpLoading = true,
+            error = null
+          )
+          try {
+            appendUserMessage("[Mock: \"${text.ifBlank { "…" }}\" через MCP]")
+            val result = McpCustomClient.callMockEcho(text.ifBlank { "" })
+            appendAssistantMessage(result)
+          } catch (e: Exception) {
+            val message = e.message ?: e.toString()
+            appendAssistantMessage("Не удалось вызвать mock-инструмент: $message")
           } finally {
             _uiState.value = _uiState.value.copy(isMcpLoading = false)
           }

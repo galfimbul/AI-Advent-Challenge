@@ -18,6 +18,8 @@ datastore = "1.2.0"
 ksp = "2.3.6"
 mcp = "0.9.0"
 ktor = "3.4.1"
+# MCP kotlin-sdk-server 0.9.0 требует Ktor 3.2.x (3.4.x даёт NoSuchMethodError в Route.sse)
+ktorServer = "3.2.3"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -47,9 +49,20 @@ androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = 
 androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
 androidx-datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
 mcp-kotlin-sdk-client = { group = "io.modelcontextprotocol", name = "kotlin-sdk", version.ref = "mcp" }
+mcp-kotlin-sdk-server = { group = "io.modelcontextprotocol", name = "kotlin-sdk-server", version.ref = "mcp" }
 ktor-client-core = { group = "io.ktor", name = "ktor-client-core", version.ref = "ktor" }
 ktor-client-okhttp = { group = "io.ktor", name = "ktor-client-okhttp", version.ref = "ktor" }
-#ktor-client-sse = { group = "io.ktor", name = "ktor-client-sse", version.ref = "ktor" }
+ktor-client-sse = { group = "io.ktor", name = "ktor-sse", version.ref = "ktor" }
+ktor-server-core = { group = "io.ktor", name = "ktor-server-core", version.ref = "ktor" }
+ktor-server-netty = { group = "io.ktor", name = "ktor-server-netty", version.ref = "ktor" }
+ktor-server-sse = { group = "io.ktor", name = "ktor-server-sse", version.ref = "ktor" }
+# Версия Ktor для mcp-server (совместима с MCP SDK 0.9.0)
+ktor-server-core-v32 = { group = "io.ktor", name = "ktor-server-core", version.ref = "ktorServer" }
+ktor-server-netty-v32 = { group = "io.ktor", name = "ktor-server-netty", version.ref = "ktorServer" }
+ktor-server-sse-v32 = { group = "io.ktor", name = "ktor-server-sse", version.ref = "ktorServer" }
+ktor-server-call-logging-v32 = { group = "io.ktor", name = "ktor-server-call-logging", version.ref = "ktorServer" }
+ktor-server-content-negotiation-v32 = { group = "io.ktor", name = "ktor-server-content-negotiation", version.ref = "ktorServer" }
+ktor-serialization-kotlinx-json-v32 = { group = "io.ktor", name = "ktor-serialization-kotlinx-json", version.ref = "ktorServer" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

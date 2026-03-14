@@ -34,6 +34,9 @@ android {
 
     val weatherKey = props.getProperty("APIFY_API_KEY", "").trim()
     buildConfigField("String", "APIFY_API_KEY", "\"$weatherKey\"")
+
+    val mcpCustomUrl = props.getProperty("MCP_CUSTOM_SERVER_URL", "").trim()
+    buildConfigField("String", "MCP_CUSTOM_SERVER_URL", "\"$mcpCustomUrl\"")
   }
   buildFeatures {
     compose = true
@@ -79,7 +82,7 @@ dependencies {
   implementation(libs.mcp.kotlin.sdk.client)
   implementation(libs.ktor.client.core)
   implementation(libs.ktor.client.okhttp)
-//  implementation(libs.ktor.client.sse)
+  implementation(libs.ktor.client.sse)
   implementation(libs.retrofit)
   implementation(libs.retrofit.gson)
   implementation(libs.okhttp)
