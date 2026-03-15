@@ -99,3 +99,12 @@
 3. **Приложение** — `McpCustomClient.callTool`; в константы и в агент добавить `schedule_reminder`, `get_reminders`; интерфейс `ReminderScheduler`, `AppReminderScheduler` (AlarmManager + Notification), передача в агент и вызов из `runToolCall`.
 4. **Документация** — отдельным коммитом после кода (по правилам проекта).
 
+---
+
+## Дополнения после реализации
+
+- **Точное время:** планирование через `setAlarmClock` (иконка в статус-баре); при `SecurityException` (нет SCHEDULE_EXACT_ALARM) — fallback на `setAndAllowWhileIdle`. В манифесте: POST_NOTIFICATIONS, SCHEDULE_EXACT_ALARM.
+- **Запрос разрешений:** при старте приложения (MainActivity) запрос POST_NOTIFICATIONS (API 33+).
+- **Таймзона:** при вызове get_reminders приложение передаёт `userTimezone` (TimeZone.getDefault().id); MCP get_reminders принимает опциональный параметр `timezone` и возвращает время в этой таймзоне. SimpleAgent.process(..., userTimezone).
+- **Логи:** AppReminderScheduler и ReminderReceiver — теги для отладки срабатывания и показа уведомлений.
+
