@@ -23,4 +23,5 @@ dependencies {
   implementation(libs.ktor.server.call.logging.v32)
   implementation(libs.ktor.server.content.negotiation.v32)
   implementation(libs.ktor.serialization.kotlinx.json.v32)
+  implementation("org.xerial:sqlite-jdbc:3.46.1.0")
 }

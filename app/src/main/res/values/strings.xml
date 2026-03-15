@@ -1,3 +1,4 @@
 <resources>
   <string name="app_name">AI Advent Challenge</string>
+  <string name="reminder_channel_name">Напоминания</string>
 </resources>

@@ -1,6 +1,7 @@
 package com.example.aiadventchallenge.domain.agent
 
 import com.example.aiadventchallenge.BuildConfig
+import com.example.aiadventchallenge.data.AgentToolConstants
 import com.example.aiadventchallenge.data.AgentTools
 import com.example.aiadventchallenge.data.ChatRepository
 import com.example.aiadventchallenge.data.ChatResponse
@@ -71,7 +72,8 @@ class SimpleAgent(
     taskMemory: String? = null,
     taskState: TaskState? = null,
     userProfile: String = "",
-    invariantsText: String = ""
+    invariantsText: String = "",
+    reminderScheduler: ReminderScheduler? = null
   ): Result<AgentResponse> {
     val trimmed = userRequest.trim()
     if (trimmed.isEmpty()) {
@@ -90,7 +92,8 @@ class SimpleAgent(
         taskState = taskState,
         userProfile = userProfile,
         invariantsText = invariantsText,
-        tools = tools
+        tools = tools,
+        reminderScheduler = reminderScheduler
       )
     }
 
@@ -190,7 +193,8 @@ class SimpleAgent(
     taskState: TaskState?,
     userProfile: String,
     invariantsText: String,
-    tools: List<ChatTool>
+    tools: List<ChatTool>,
+    reminderScheduler: ReminderScheduler?
   ): Result<AgentResponse> {
     val historyMessages = when (contextStrategy) {
       ContextStrategy.SlidingWindow -> dialog.messages.takeLast(lastN.coerceAtLeast(1))
@@ -247,7 +251,7 @@ class SimpleAgent(
         toolCalls = outgoingCalls
       )
       response.toolCalls.forEach { tc ->
-        val toolResult = runToolCall(tc)
+        val toolResult = runToolCall(tc, reminderScheduler)
         currentMessages = currentMessages + ChatMessage.tool(tc.id ?: "", toolResult)
       }
       round++
@@ -284,7 +288,7 @@ class SimpleAgent(
   ): String = buildString {
     append(ChatRepository.DEFAULT_SYSTEM_MESSAGE)
     if (includeToolsHint) {
-      append(" У тебя есть инструменты: mock_echo (эхо сообщения с меткой времени) и get_current_weather (погода в городе). Используй их, когда пользователь просит эхо или погоду.")
+      append(" У тебя есть инструменты: mock_echo (эхо с меткой времени), get_current_weather (погода в городе), schedule_reminder (напомнить через N минут — параметры message и in_minutes), get_reminders (список запланированных напоминаний). Используй их по запросу пользователя.")
     }
     if (userProfile.isNotBlank()) {
       append("\n\nУчитывай предпочтения пользователя (стиль, формат, ограничения):\n")
@@ -310,7 +314,7 @@ class SimpleAgent(
     append(if (invariantsText.isNotBlank()) invariantsText else "Ограничений нет.")
   }
 
-  private suspend fun runToolCall(tc: ToolCall): String {
+  private suspend fun runToolCall(tc: ToolCall, reminderScheduler: ReminderScheduler?): String {
     val name = tc.function?.name ?: return "Ошибка: нет имени инструмента"
     val argsJson = tc.function?.arguments ?: "{}"
     val args = try {
@@ -318,16 +322,38 @@ class SimpleAgent(
     } catch (_: Exception) {
       JsonObject()
     }
+    fun getString(key: String): String =
+      args.get(key)?.takeIf { it.isJsonPrimitive }?.asJsonPrimitive?.asString ?: ""
+    fun getInt(key: String): Int =
+      try {
+        args.get(key)?.getAsInt() ?: 0
+      } catch (_: Exception) {
+        0
+      }
     return try {
       when (name) {
-        "mock_echo" -> {
-          val message = args.get("message")?.takeIf { it.isJsonPrimitive }?.asJsonPrimitive?.asString ?: ""
-          McpCustomClient.callMockEcho(message)
+        AgentToolConstants.ToolNames.MOCK_ECHO -> {
+          McpCustomClient.callMockEcho(getString(AgentToolConstants.ParamNames.MESSAGE))
         }
-        "get_current_weather" -> {
-          val city = args.get("city")?.takeIf { it.isJsonPrimitive }?.asJsonPrimitive?.asString ?: ""
-          val result = McpWeatherClient.getWeather(city)
-          result.rawText
+        AgentToolConstants.ToolNames.GET_CURRENT_WEATHER -> {
+          val city = getString(AgentToolConstants.ParamNames.CITY)
+          McpWeatherClient.getWeather(city).rawText
+        }
+        AgentToolConstants.ToolNames.SCHEDULE_REMINDER -> {
+          val message = getString(AgentToolConstants.ParamNames.MESSAGE)
+          val inMinutes = getInt(AgentToolConstants.ParamNames.IN_MINUTES).coerceIn(0, 60 * 24 * 365)
+          val serverResult = McpCustomClient.callTool(
+            AgentToolConstants.McpToolNames.REGISTER_REMINDER,
+            mapOf(
+              AgentToolConstants.ParamNames.MESSAGE to message,
+              AgentToolConstants.ParamNames.IN_MINUTES to inMinutes
+            )
+          )
+          reminderScheduler?.scheduleReminder(inMinutes, message)
+          serverResult
+        }
+        AgentToolConstants.ToolNames.GET_REMINDERS -> {
+          McpCustomClient.callTool(AgentToolConstants.McpToolNames.GET_REMINDERS, emptyMap())
         }
         else -> "Неизвестный инструмент: $name"
       }

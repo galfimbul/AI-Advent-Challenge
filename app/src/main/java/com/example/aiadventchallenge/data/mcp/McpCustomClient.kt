@@ -83,22 +83,27 @@ object McpCustomClient {
   }
 
   /**
-   * Вызывает инструмент mock_echo на кастомном MCP-сервере (стриминг).
+   * Универсальный вызов инструмента на кастомном MCP-сервере.
+   * @param toolName имя инструмента (например register_reminder, get_reminders)
+   * @param arguments аргументы для инструмента (ключ — имя параметра, значение — число или строка)
    */
-  suspend fun callMockEcho(message: String): String {
+  suspend fun callTool(toolName: String, arguments: Map<String, Any>): String {
     val c = getClient()
     val result = try {
-      c.callTool("mock_echo", mapOf("message" to message))
+      c.callTool(toolName, arguments)
     } catch (e: Exception) {
-      logMcpError(LOG_TAG, "callTool mock_echo", e)
+      logMcpError(LOG_TAG, "callTool $toolName", e)
       throw e
     }
-    val text = result.content
+    return result.content
       .mapNotNull { content -> (content as? TextContent)?.text }
       .joinToString(separator = "\n")
       .ifBlank { "Сервер не вернул текстового ответа." }
-    return text
   }
+
+  /** Вызывает инструмент mock_echo на кастомном MCP-сервере. */
+  suspend fun callMockEcho(message: String): String =
+    callTool(com.example.aiadventchallenge.data.AgentToolConstants.McpToolNames.MOCK_ECHO, mapOf("message" to message))
 
   suspend fun close() {
     mutex.withLock {

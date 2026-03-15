@@ -7,6 +7,7 @@ import com.example.aiadventchallenge.AiAdventChallengeApplication
 import com.example.aiadventchallenge.data.ChatRepository
 import com.example.aiadventchallenge.data.agent.AgentPreferences
 import com.example.aiadventchallenge.data.agent.AgentDialogStorage
+import com.example.aiadventchallenge.data.reminder.AppReminderScheduler
 import com.example.aiadventchallenge.domain.agent.SimpleAgent
 
 class AgentViewModelFactory(
@@ -29,6 +30,7 @@ class AgentViewModelFactory(
     val repository = ChatRepository()
     val agent = SimpleAgent(repository)
     val agentPreferences = AgentPreferences(context)
-    return AgentViewModel(agent, storage, repository, agentPreferences) as T
+    val reminderScheduler = AppReminderScheduler(context.applicationContext)
+    return AgentViewModel(agent, storage, repository, agentPreferences, reminderScheduler) as T
   }
 }

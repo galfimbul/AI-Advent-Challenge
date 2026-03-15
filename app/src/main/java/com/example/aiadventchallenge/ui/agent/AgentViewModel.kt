@@ -14,6 +14,7 @@ import com.example.aiadventchallenge.domain.agent.AgentDialogState
 import com.example.aiadventchallenge.domain.agent.AgentMessage
 import com.example.aiadventchallenge.domain.agent.AgentRole
 import com.example.aiadventchallenge.domain.agent.ContextStrategy
+import com.example.aiadventchallenge.domain.agent.ReminderScheduler
 import com.example.aiadventchallenge.domain.agent.SimpleAgent
 import com.example.aiadventchallenge.domain.agent.TaskStage
 import com.example.aiadventchallenge.domain.agent.TaskState
@@ -33,7 +34,8 @@ class AgentViewModel(
   private val agent: SimpleAgent,
   private val storage: AgentDialogStorage,
   private val repository: ChatRepository,
-  private val agentPreferences: AgentPreferences
+  private val agentPreferences: AgentPreferences,
+  private val reminderScheduler: ReminderScheduler?
 ) : ViewModel() {
 
   private val _uiState = MutableStateFlow(AgentUiState())
@@ -160,7 +162,8 @@ class AgentViewModel(
       taskMemory = taskMemory,
       taskState = taskState,
       userProfile = userProfile,
-      invariantsText = invariantsText
+      invariantsText = invariantsText,
+      reminderScheduler = reminderScheduler
     )
       .onSuccess { agentResponse ->
         dialogState = agentResponse.dialog
@@ -820,7 +823,7 @@ class AgentViewModel(
   fun sendContextOverflowTest() {
     _uiState.value = _uiState.value.copy(isLoading = true, error = null)
     viewModelScope.launch {
-      agent.process(dialogState, "Тест: превышение контекста", contextStrategy = ContextStrategy.SlidingWindow, lastN = 10, forceContextOverflow = true, longTermMemory = "", taskMemory = null, taskState = null, userProfile = "", invariantsText = _uiState.value.invariantsText)
+      agent.process(dialogState, "Тест: превышение контекста", contextStrategy = ContextStrategy.SlidingWindow, lastN = 10, forceContextOverflow = true, longTermMemory = "", taskMemory = null, taskState = null, userProfile = "", invariantsText = _uiState.value.invariantsText, reminderScheduler = reminderScheduler)
         .onSuccess { agentResponse ->
           dialogState = agentResponse.dialog
           _uiState.value = _uiState.value.copy(

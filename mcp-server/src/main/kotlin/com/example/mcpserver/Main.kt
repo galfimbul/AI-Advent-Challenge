@@ -24,6 +24,8 @@ import java.time.Instant
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
+private val reminderStorage = ReminderStorage()
+
 private fun log(msg: String) {
   val ts = Instant.now().toString()
   println("[$ts] [MCP] $msg")
@@ -77,6 +79,38 @@ fun Application.module() {
         val message = raw?.trim('"') ?: ""
         val timestamp = Instant.now().toString()
         val result = "Echo: $message | Время: $timestamp"
+        CallToolResult(content = listOf(TextContent(result)))
+      }
+      addTool(
+        name = "register_reminder",
+        description = "Register a reminder: store message and scheduled time (now + in_minutes). Day 18.",
+        inputSchema = ToolSchema(
+          properties = buildJsonObject {
+            put("message", buildJsonObject { put("type", "string") })
+            put("in_minutes", buildJsonObject { put("type", "number") })
+          }
+        )
+      ) { request ->
+        val args = request.params.arguments
+        val rawMessage = args?.get("message")?.toString()
+        val message = rawMessage?.trim('"') ?: ""
+        val inMinutes = (args?.get("in_minutes")?.toString()?.toDoubleOrNull() ?: 0.0).toInt().coerceIn(0, 60 * 24 * 365)
+        val scheduledAt = Instant.now().plusSeconds(inMinutes * 60L)
+        val id = reminderStorage.insert(message, scheduledAt)
+        val result = "Напоминание запланировано (id=$id) на $scheduledAt: $message"
+        CallToolResult(content = listOf(TextContent(result)))
+      }
+      addTool(
+        name = "get_reminders",
+        description = "Return list of all registered reminders (id, scheduled_at, message). Day 18.",
+        inputSchema = ToolSchema(properties = buildJsonObject { })
+      ) { _ ->
+        val list = reminderStorage.getAll()
+        val result = if (list.isEmpty()) {
+          "Нет запланированных напоминаний."
+        } else {
+          list.joinToString("\n") { r -> "${r.id}. [${r.scheduledAt}] ${r.message}" }
+        }
         CallToolResult(content = listOf(TextContent(result)))
       }
     }
