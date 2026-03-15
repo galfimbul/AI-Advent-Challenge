@@ -1,7 +1,19 @@
 package com.example.aiadventchallenge.domain.agent
 
+import com.example.aiadventchallenge.BuildConfig
+import com.example.aiadventchallenge.data.AgentTools
 import com.example.aiadventchallenge.data.ChatRepository
 import com.example.aiadventchallenge.data.ChatResponse
+import com.example.aiadventchallenge.data.ChatResponseWithToolCalls
+import com.example.aiadventchallenge.data.mcp.McpCustomClient
+import com.example.aiadventchallenge.data.mcp.McpWeatherClient
+import com.example.aiadventchallenge.data.openai.ChatMessage
+import com.example.aiadventchallenge.data.openai.ChatTool
+import com.example.aiadventchallenge.data.openai.OutgoingToolCall
+import com.example.aiadventchallenge.data.openai.OutgoingToolCallFunction
+import com.example.aiadventchallenge.data.openai.ToolCall
+import com.google.gson.Gson
+import com.google.gson.JsonObject
 
 enum class AgentRole {
   User,
@@ -38,6 +50,8 @@ data class AgentResponse(
   val raw: ChatResponse
 )
 
+private const val MAX_TOOL_ROUNDS = 5
+
 /**
  * Простой агент поверх ChatRepository:
  * принимает историю диалога и новый запрос, сам формирует промпт с контекстом,
@@ -62,6 +76,22 @@ class SimpleAgent(
     val trimmed = userRequest.trim()
     if (trimmed.isEmpty()) {
       return Result.failure(IllegalArgumentException("Пустой запрос"))
+    }
+
+    val tools = if (BuildConfig.MCP_CUSTOM_SERVER_URL.isNotBlank()) AgentTools.tools else null
+    if (!tools.isNullOrEmpty()) {
+      return processWithTools(
+        dialog = dialog,
+        userRequest = trimmed,
+        contextStrategy = contextStrategy,
+        lastN = lastN,
+        longTermMemory = longTermMemory,
+        taskMemory = taskMemory,
+        taskState = taskState,
+        userProfile = userProfile,
+        invariantsText = invariantsText,
+        tools = tools
+      )
     }
 
     val historyText = when {
@@ -147,6 +177,162 @@ class SimpleAgent(
         dialog = dialog.copy(messages = newMessages),
         raw = chatResponse
       )
+    }
+  }
+
+  private suspend fun processWithTools(
+    dialog: AgentDialogState,
+    userRequest: String,
+    contextStrategy: ContextStrategy,
+    lastN: Int,
+    longTermMemory: String,
+    taskMemory: String?,
+    taskState: TaskState?,
+    userProfile: String,
+    invariantsText: String,
+    tools: List<ChatTool>
+  ): Result<AgentResponse> {
+    val historyMessages = when (contextStrategy) {
+      ContextStrategy.SlidingWindow -> dialog.messages.takeLast(lastN.coerceAtLeast(1))
+      ContextStrategy.Branching -> dialog.messages
+      ContextStrategy.StickyFacts,
+      ContextStrategy.Summary -> dialog.messages.takeLast(lastN.coerceAtLeast(1))
+      else -> dialog.messages.takeLast(lastN.coerceAtLeast(1))
+    }
+    val systemContent = buildSystemMessageWithInvariants(
+      userProfile = userProfile,
+      invariantsText = invariantsText,
+      taskState = taskState,
+      taskMemory = taskMemory,
+      longTermMemory = longTermMemory,
+      includeToolsHint = true
+    )
+    val apiMessages = mutableListOf<ChatMessage>()
+    apiMessages.add(ChatMessage.system(systemContent))
+    historyMessages.forEach { msg ->
+      when (msg.role) {
+        AgentRole.User -> apiMessages.add(ChatMessage.user(msg.text))
+        AgentRole.Assistant -> apiMessages.add(ChatMessage.assistant(content = msg.text))
+      }
+    }
+    apiMessages.add(ChatMessage.user(userRequest))
+
+    var lastResponse: ChatResponseWithToolCalls? = null
+    var currentMessages = apiMessages.toList()
+    var round = 0
+    while (round < MAX_TOOL_ROUNDS) {
+      val result = repository.sendOneCompletion(
+        messages = currentMessages,
+        tools = tools,
+        maxTokens = null,
+        stopPhrases = null
+      )
+      val response = result.getOrElse { return Result.failure(it) }
+      lastResponse = response
+      if (response.toolCalls.isNullOrEmpty()) {
+        break
+      }
+      val outgoingCalls = response.toolCalls.map { tc ->
+        OutgoingToolCall(
+          id = tc.id ?: "",
+          type = tc.type ?: "function",
+          function = OutgoingToolCallFunction(
+            name = tc.function?.name ?: "",
+            arguments = tc.function?.arguments ?: "{}"
+          )
+        )
+      }
+      currentMessages = currentMessages + ChatMessage.assistant(
+        content = response.content,
+        toolCalls = outgoingCalls
+      )
+      response.toolCalls.forEach { tc ->
+        val toolResult = runToolCall(tc)
+        currentMessages = currentMessages + ChatMessage.tool(tc.id ?: "", toolResult)
+      }
+      round++
+    }
+
+    val finalContent = lastResponse?.content?.takeIf { it.isNotBlank() }
+      ?: "Не удалось получить ответ."
+    val newMessages = dialog.messages +
+      AgentMessage(AgentRole.User, userRequest) +
+      AgentMessage(AgentRole.Assistant, finalContent)
+    val chatResponse = ChatResponse(
+      content = finalContent,
+      promptTokens = lastResponse?.promptTokens,
+      completionTokens = lastResponse?.completionTokens,
+      totalTokens = lastResponse?.totalTokens,
+      finishReason = lastResponse?.finishReason
+    )
+    return Result.success(
+      AgentResponse(
+        reply = finalContent,
+        dialog = dialog.copy(messages = newMessages),
+        raw = chatResponse
+      )
+    )
+  }
+
+  private fun buildSystemMessageWithInvariants(
+    userProfile: String,
+    invariantsText: String,
+    taskState: TaskState?,
+    taskMemory: String?,
+    longTermMemory: String,
+    includeToolsHint: Boolean
+  ): String = buildString {
+    append(ChatRepository.DEFAULT_SYSTEM_MESSAGE)
+    if (includeToolsHint) {
+      append(" У тебя есть инструменты: mock_echo (эхо сообщения с меткой времени) и get_current_weather (погода в городе). Используй их, когда пользователь просит эхо или погоду.")
+    }
+    if (userProfile.isNotBlank()) {
+      append("\n\nУчитывай предпочтения пользователя (стиль, формат, ограничения):\n")
+      append(userProfile)
+    }
+    if (longTermMemory.isNotBlank()) {
+      append("\n\nДолговременная память:\n")
+      append(longTermMemory)
+    }
+    if (taskState != null) {
+      append("\n\nСостояние задачи: этап — ")
+      append(taskState.stage.displayName())
+      append(", ожидаемое действие: ")
+      append(taskState.stage.expectedActionText())
+      append(".")
+      append(" СТРОГОЕ ПРАВИЛО: переход между этапами только по /confirm.")
+    }
+    if (!taskMemory.isNullOrBlank()) {
+      append("\n\nПамять текущей задачи:\n")
+      append(taskMemory)
+    }
+    append("\n\nИнварианты (не нарушать):\n")
+    append(if (invariantsText.isNotBlank()) invariantsText else "Ограничений нет.")
+  }
+
+  private suspend fun runToolCall(tc: ToolCall): String {
+    val name = tc.function?.name ?: return "Ошибка: нет имени инструмента"
+    val argsJson = tc.function?.arguments ?: "{}"
+    val args = try {
+      Gson().fromJson(argsJson, JsonObject::class.java) ?: JsonObject()
+    } catch (_: Exception) {
+      JsonObject()
+    }
+    return try {
+      when (name) {
+        "mock_echo" -> {
+          val message = args.get("message")?.takeIf { it.isJsonPrimitive }?.asJsonPrimitive?.asString ?: ""
+          McpCustomClient.callMockEcho(message)
+        }
+        "get_current_weather" -> {
+          val city = args.get("city")?.takeIf { it.isJsonPrimitive }?.asJsonPrimitive?.asString ?: ""
+          val result = McpWeatherClient.getWeather(city)
+          result.rawText
+        }
+        else -> "Неизвестный инструмент: $name"
+      }
+    } catch (e: Exception) {
+      "Ошибка вызова $name: ${e.message ?: e.toString()}"
     }
   }
 

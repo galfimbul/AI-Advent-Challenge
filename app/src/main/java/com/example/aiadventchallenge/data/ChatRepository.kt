@@ -4,7 +4,9 @@ import android.util.Log
 import com.example.aiadventchallenge.BuildConfig
 import com.example.aiadventchallenge.data.openai.ChatCompletionRequest
 import com.example.aiadventchallenge.data.openai.ChatMessage
+import com.example.aiadventchallenge.data.openai.ChatTool
 import com.example.aiadventchallenge.data.openai.OpenAiApi
+import com.example.aiadventchallenge.data.openai.ToolCall
 import com.example.aiadventchallenge.domain.agent.AgentMessage
 import com.example.aiadventchallenge.domain.agent.AgentRole
 import com.example.aiadventchallenge.domain.ReasoningMode
@@ -28,6 +30,16 @@ data class ChatResponse(
   val finishReason: String? = null,
   /** Для способа «Свой промпт» — текст промпта, сгенерированного моделью в первом запросе. */
   val generatedPrompt: String? = null
+)
+
+/** Результат одного вызова API с поддержкой tool_calls (для цикла в агенте). */
+data class ChatResponseWithToolCalls(
+  val content: String?,
+  val toolCalls: List<ToolCall>?,
+  val promptTokens: Int? = null,
+  val completionTokens: Int? = null,
+  val totalTokens: Int? = null,
+  val finishReason: String? = null
 )
 
 private const val LOG_TAG = "OpenAI"
@@ -217,6 +229,68 @@ class ChatRepository {
         else -> {
           Log.w(LOG_TAG, "Пустой content. body=$body choices=${body?.choices}")
           Result.failure(IOException("Пустой ответ от API. Проверьте Logcat (тег OpenAI) для структуры ответа."))
+        }
+      }
+    } catch (e: Exception) {
+      Result.failure(e)
+    }
+  }
+
+  /**
+   * Один round-trip к API с опциональными tools. Возвращает content и tool_calls (если есть).
+   * Цикл (повтор при tool_calls) выполняет вызывающий код (SimpleAgent).
+   */
+  suspend fun sendOneCompletion(
+    messages: List<ChatMessage>,
+    tools: List<ChatTool>? = null,
+    maxTokens: Int? = null,
+    stopPhrases: List<String>? = null,
+    temperature: Float? = null,
+    model: String? = null
+  ): Result<ChatResponseWithToolCalls> = withContext(Dispatchers.IO) {
+    val apiKey = BuildConfig.OPENAI_API_KEY
+    if (apiKey.isNullOrEmpty()) {
+      return@withContext Result.failure(SecurityException("OPENAI_API_KEY не задан. Скопируйте secret.properties.example в secret.properties и подставьте свой ключ."))
+    }
+    try {
+      val request = ChatCompletionRequest(
+        model = model ?: "gpt-4.1",
+        messages = messages,
+        maxCompletionTokens = maxTokens,
+        stop = stopPhrases,
+        temperature = temperature,
+        tools = tools
+      )
+      val response = api.createChatCompletion(
+        authorization = "Bearer $apiKey",
+        request = request
+      )
+      if (!response.isSuccessful) {
+        val errorBody = response.errorBody()?.string() ?: "Unknown error"
+        return@withContext Result.failure(IOException("HTTP ${response.code()}: $errorBody"))
+      }
+      val body = response.body()
+      if (body?.error != null) {
+        return@withContext Result.failure(IOException(body.error.message ?: "Ошибка API"))
+      }
+      val choice = body?.choices?.firstOrNull()
+      val msg = choice?.message
+      val content = msg?.content
+      val toolCalls = msg?.toolCalls
+      val usage = body?.usage
+      val result = ChatResponseWithToolCalls(
+        content = content,
+        toolCalls = toolCalls,
+        promptTokens = usage?.promptTokens,
+        completionTokens = usage?.completionTokens,
+        totalTokens = usage?.totalTokens,
+        finishReason = choice?.finishReason
+      )
+      when {
+        content != null || !toolCalls.isNullOrEmpty() -> Result.success(result)
+        else -> {
+          Log.w(LOG_TAG, "Пустой content и нет tool_calls. body=$body")
+          Result.failure(IOException("Пустой ответ от API (нет content и tool_calls). Проверьте Logcat."))
         }
       }
     } catch (e: Exception) {
