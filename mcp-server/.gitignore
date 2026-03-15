@@ -1,0 +1,22 @@
+# Gradle
+build/
+.gradle/
+out/
+
+# JVM
+*.class
+*.jar
+*.war
+*.log
+hs_err_pid*
+
+# IDE
+.idea/
+*.iml
+
+# SQLite (если хранить рядом с кодом при разработке)
+*.db
+*.db-journal
+
+# OS
+.DS_Store
