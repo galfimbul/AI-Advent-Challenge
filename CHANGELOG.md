@@ -184,3 +184,11 @@
 - **UI:** в диалоге «Команды» добавлен пункт «/mock — вызвать mock-инструмент MCP» с диалогом ввода текста.
 - **Вызов MCP моделью по обычному промпту:** при заданном `MCP_CUSTOM_SERVER_URL` в запрос к OpenAI передаётся список tools (mock_echo, get_current_weather) в формате function calling. SimpleAgent при наличии tools выполняет цикл (до 5 раундов): sendOneCompletion → при tool_calls выполняет mock_echo/get_current_weather через MCP и повторяет запрос с результатами; финальный текст без tool_calls возвращается в чат. Data: OpenAiDto (tools, tool_calls, ChatMessage с ролями tool/assistant+tool_calls), ChatRepository.sendOneCompletion, ChatResponseWithToolCalls; data/AgentTools.kt — статический список tools; domain/agent/SimpleAgent — processWithTools, runToolCall.
 - **Ветка:** `challenge_day_17`.
+
+## День 18 (напоминалки)
+
+- **MCP-сервер:** инструменты `register_reminder`(message, in_minutes) и `get_reminders`(). Хранение в SQLite (таблица reminders: id, message, scheduled_at, created_at); слой `ReminderStorage.kt`, зависимость `org.xerial:sqlite-jdbc`. При запросе «напомни через N минут» модель вызывает tool `schedule_reminder`; приложение регистрирует напоминание на сервере и ставит локальное уведомление через AlarmManager.
+- **Приложение:** единый источник констант инструментов — `data/AgentToolConstants.kt` (имена инструментов и параметров); список tools в `AgentTools.kt` и ветки в `SimpleAgent.runToolCall` используют константы. Новые инструменты для модели: `schedule_reminder` (message, in_minutes), `get_reminders`. `McpCustomClient.callTool(toolName, arguments)` — универсальный вызов MCP.
+- **Локальные уведомления:** интерфейс `ReminderScheduler` (domain/agent), реализация `AppReminderScheduler` (data/reminder) — AlarmManager (setExactAndAllowWhileIdle на API 31+), при срабатывании `ReminderReceiver` показывает Notification. Канал «Напоминания»; разрешение POST_NOTIFICATIONS. После перезагрузки устройства напоминания не восстанавливаются.
+- **Интеграция:** AgentViewModelFactory создаёт AppReminderScheduler, передаёт в AgentViewModel и в `SimpleAgent.process(..., reminderScheduler)`. При вызове schedule_reminder агент сначала вызывает MCP register_reminder, затем reminderScheduler.scheduleReminder(inMinutes, message).
+- **Ветка:** `challenge_day_18`.

@@ -105,6 +105,7 @@ app/src/main/java/com/example/aiadventchallenge/
 | Тест превышения контекста | Кнопка «Превысить контекст» в настройках агента (чекбокс «Показать кнопку…»); по умолчанию скрыта; `AgentViewModel.sendContextOverflowTest()` |
 | MCP погода (День 16) | Команды `/tools` и `/weather Город` в чате агента; сервер `https://jiri-spilka--weather-mcp-server.apify.actor/mcp`; токен в `secret.properties` → `APIFY_API_KEY`; клиент `data/mcp/McpWeatherClient`, Kotlin MCP SDK + Ktor (только для MCP). |
 | Свой MCP-сервер (День 17) | Модуль `mcp-server/` (Ktor + MCP Kotlin SDK), инструмент `mock_echo`; команда `/mock Текст` в чате агента; URL в `secret.properties` → `MCP_CUSTOM_SERVER_URL`; клиент `data/mcp/McpCustomClient`; развёртывание — [mcp-server/DEPLOY.md](mcp-server/DEPLOY.md). При заданном URL модель сама вызывает mock_echo и get_current_weather по обычному запросу (tools в API, цикл в SimpleAgent, до 5 раундов); статический список tools — `data/AgentTools.kt`, один round-trip — `ChatRepository.sendOneCompletion`. |
+| Напоминалки (День 18) | MCP-сервер: инструменты `register_reminder`, `get_reminders`, SQLite (ReminderStorage). Приложение: константы инструментов `data/AgentToolConstants.kt`; tools schedule_reminder, get_reminders; McpCustomClient.callTool; ReminderScheduler (domain), AppReminderScheduler + ReminderReceiver (data/reminder), AlarmManager и уведомления. Запрос «напомни через N минут» → регистрация на сервере + локальное уведомление; «какие напоминания?» → список с сервера. |
 | Логи запросов/ответов | Logcat, тег `OpenAI` |
 
 ## Сборка и запуск
@@ -132,3 +133,4 @@ app/src/main/java/com/example/aiadventchallenge/
 - `challenge_day_15` — контролируемые переходы: этапы задачи per-branch; /start_task, /stop_task; десвязка этапов от памяти задачи
 - `challenge_day_16` — MCP: подключение к Weather MCP Server (Apify), команды /tools и /weather; Kotlin MCP SDK, Ktor (только для MCP); BuildConfig.APIFY_API_KEY
 - `challenge_day_17` — свой MCP-сервер (модуль mcp-server, mock_echo); команда /mock; BuildConfig.MCP_CUSTOM_SERVER_URL; McpCustomClient
+- `challenge_day_18` — напоминалки: MCP register_reminder/get_reminders (SQLite), константы инструментов (AgentToolConstants), schedule_reminder/get_reminders в агенте, AlarmManager + уведомления (AppReminderScheduler, ReminderReceiver)
