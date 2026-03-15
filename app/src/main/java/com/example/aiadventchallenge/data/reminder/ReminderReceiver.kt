@@ -7,6 +7,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.example.aiadventchallenge.MainActivity
@@ -18,13 +19,19 @@ import com.example.aiadventchallenge.R
 class ReminderReceiver : BroadcastReceiver() {
 
   override fun onReceive(context: Context, intent: Intent) {
-    if (intent.action != ACTION_REMINDER) return
+    Log.d(LOG_TAG, "onReceive: action=${intent.action}")
+    if (intent.action != ACTION_REMINDER) {
+      Log.w(LOG_TAG, "onReceive: ignoring unknown action")
+      return
+    }
     val message = intent.getStringExtra(EXTRA_MESSAGE) ?: "Напоминание"
+    val requestId = intent.getIntExtra(EXTRA_REQUEST_ID, 0)
+    Log.i(LOG_TAG, "onReceive: showing reminder requestId=$requestId, message=\"$message\"")
     ensureChannel(context)
     val openIntent = Intent(context, MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP }
     val pendingOpen = PendingIntent.getActivity(
       context,
-      intent.getIntExtra(EXTRA_REQUEST_ID, 0),
+      requestId,
       openIntent,
       PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
     )
@@ -38,12 +45,16 @@ class ReminderReceiver : BroadcastReceiver() {
       .build()
     val nm = NotificationManagerCompat.from(context)
     try {
-      nm.notify(intent.getIntExtra(EXTRA_REQUEST_ID, 0), notification)
-    } catch (_: SecurityException) { }
+      nm.notify(requestId, notification)
+      Log.i(LOG_TAG, "onReceive: notification shown for requestId=$requestId")
+    } catch (e: SecurityException) {
+      Log.e(LOG_TAG, "onReceive: SecurityException when showing notification (permission POST_NOTIFICATIONS?)", e)
+    }
   }
 
   private fun ensureChannel(context: Context) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      Log.d(LOG_TAG, "ensureChannel: creating channel $CHANNEL_ID")
       val channel = NotificationChannel(
         CHANNEL_ID,
         context.getString(R.string.reminder_channel_name),
@@ -55,6 +66,7 @@ class ReminderReceiver : BroadcastReceiver() {
   }
 
   companion object {
+    private const val LOG_TAG = "ReminderReceiver"
     const val ACTION_REMINDER = "com.example.aiadventchallenge.REMINDER_ALARM"
     const val CHANNEL_ID = "reminders"
     const val EXTRA_MESSAGE = "message"

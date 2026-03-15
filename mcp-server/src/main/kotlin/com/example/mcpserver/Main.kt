@@ -21,10 +21,29 @@ import io.modelcontextprotocol.kotlin.sdk.types.ServerCapabilities
 import io.modelcontextprotocol.kotlin.sdk.types.TextContent
 import io.modelcontextprotocol.kotlin.sdk.types.ToolSchema
 import java.time.Instant
+import java.time.ZoneId
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 private val reminderStorage = ReminderStorage()
+
+private fun formatScheduledAt(scheduledAtIso: String, timezoneId: String?): String {
+  return try {
+    val instant = Instant.parse(scheduledAtIso)
+    if (!timezoneId.isNullOrBlank()) {
+      val zone = ZoneId.of(timezoneId)
+      val zdt = ZonedDateTime.ofInstant(instant, zone)
+      zdt.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm zzzz", Locale.US))
+    } else {
+      scheduledAtIso
+    }
+  } catch (_: Exception) {
+    scheduledAtIso
+  }
+}
 
 private fun log(msg: String) {
   val ts = Instant.now().toString()
@@ -102,14 +121,23 @@ fun Application.module() {
       }
       addTool(
         name = "get_reminders",
-        description = "Return list of all registered reminders (id, scheduled_at, message). Day 18.",
-        inputSchema = ToolSchema(properties = buildJsonObject { })
-      ) { _ ->
+        description = "Return list of all registered reminders (id, scheduled_at, message). Optional: timezone (IANA, e.g. Europe/Moscow) to show times in user's timezone.",
+        inputSchema = ToolSchema(
+          properties = buildJsonObject {
+            put("timezone", buildJsonObject { put("type", "string") })
+          }
+        )
+      ) { request ->
+        val args = request.params.arguments
+        val timezoneId = args?.get("timezone")?.toString()?.trim('"')?.takeIf { it.isNotBlank() }
         val list = reminderStorage.getAll()
         val result = if (list.isEmpty()) {
           "Нет запланированных напоминаний."
         } else {
-          list.joinToString("\n") { r -> "${r.id}. [${r.scheduledAt}] ${r.message}" }
+          list.joinToString("\n") { r ->
+            val atFormatted = formatScheduledAt(r.scheduledAt, timezoneId)
+            "${r.id}. [$atFormatted] ${r.message}"
+          }
         }
         CallToolResult(content = listOf(TextContent(result)))
       }

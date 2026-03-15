@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.util.TimeZone
 
 private const val LOG_TAG = "AgentViewModel"
 
@@ -153,6 +154,7 @@ class AgentViewModel(
     val taskState = taskStateOverride ?: _uiState.value.loadedTaskState
     val userProfile = _uiState.value.activeProfileId?.let { id -> storage.getProfileContent(id) } ?: ""
     val invariantsText = _uiState.value.invariantsText
+    val userTimezone = TimeZone.getDefault().id
     agent.process(
       stateToSend,
       request,
@@ -163,7 +165,8 @@ class AgentViewModel(
       taskState = taskState,
       userProfile = userProfile,
       invariantsText = invariantsText,
-      reminderScheduler = reminderScheduler
+      reminderScheduler = reminderScheduler,
+      userTimezone = userTimezone
     )
       .onSuccess { agentResponse ->
         dialogState = agentResponse.dialog
@@ -823,7 +826,7 @@ class AgentViewModel(
   fun sendContextOverflowTest() {
     _uiState.value = _uiState.value.copy(isLoading = true, error = null)
     viewModelScope.launch {
-      agent.process(dialogState, "Тест: превышение контекста", contextStrategy = ContextStrategy.SlidingWindow, lastN = 10, forceContextOverflow = true, longTermMemory = "", taskMemory = null, taskState = null, userProfile = "", invariantsText = _uiState.value.invariantsText, reminderScheduler = reminderScheduler)
+      agent.process(dialogState, "Тест: превышение контекста", contextStrategy = ContextStrategy.SlidingWindow, lastN = 10, forceContextOverflow = true, longTermMemory = "", taskMemory = null, taskState = null, userProfile = "", invariantsText = _uiState.value.invariantsText, reminderScheduler = reminderScheduler, userTimezone = TimeZone.getDefault().id)
         .onSuccess { agentResponse ->
           dialogState = agentResponse.dialog
           _uiState.value = _uiState.value.copy(

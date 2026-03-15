@@ -73,7 +73,8 @@ class SimpleAgent(
     taskState: TaskState? = null,
     userProfile: String = "",
     invariantsText: String = "",
-    reminderScheduler: ReminderScheduler? = null
+    reminderScheduler: ReminderScheduler? = null,
+    userTimezone: String = ""
   ): Result<AgentResponse> {
     val trimmed = userRequest.trim()
     if (trimmed.isEmpty()) {
@@ -93,7 +94,8 @@ class SimpleAgent(
         userProfile = userProfile,
         invariantsText = invariantsText,
         tools = tools,
-        reminderScheduler = reminderScheduler
+        reminderScheduler = reminderScheduler,
+        userTimezone = userTimezone
       )
     }
 
@@ -194,7 +196,8 @@ class SimpleAgent(
     userProfile: String,
     invariantsText: String,
     tools: List<ChatTool>,
-    reminderScheduler: ReminderScheduler?
+    reminderScheduler: ReminderScheduler?,
+    userTimezone: String
   ): Result<AgentResponse> {
     val historyMessages = when (contextStrategy) {
       ContextStrategy.SlidingWindow -> dialog.messages.takeLast(lastN.coerceAtLeast(1))
@@ -251,7 +254,7 @@ class SimpleAgent(
         toolCalls = outgoingCalls
       )
       response.toolCalls.forEach { tc ->
-        val toolResult = runToolCall(tc, reminderScheduler)
+        val toolResult = runToolCall(tc, reminderScheduler, userTimezone)
         currentMessages = currentMessages + ChatMessage.tool(tc.id ?: "", toolResult)
       }
       round++
@@ -314,7 +317,7 @@ class SimpleAgent(
     append(if (invariantsText.isNotBlank()) invariantsText else "Ограничений нет.")
   }
 
-  private suspend fun runToolCall(tc: ToolCall, reminderScheduler: ReminderScheduler?): String {
+  private suspend fun runToolCall(tc: ToolCall, reminderScheduler: ReminderScheduler?, userTimezone: String): String {
     val name = tc.function?.name ?: return "Ошибка: нет имени инструмента"
     val argsJson = tc.function?.arguments ?: "{}"
     val args = try {
@@ -353,7 +356,8 @@ class SimpleAgent(
           serverResult
         }
         AgentToolConstants.ToolNames.GET_REMINDERS -> {
-          McpCustomClient.callTool(AgentToolConstants.McpToolNames.GET_REMINDERS, emptyMap())
+          val args = if (userTimezone.isNotBlank()) mapOf("timezone" to userTimezone) else emptyMap()
+          McpCustomClient.callTool(AgentToolConstants.McpToolNames.GET_REMINDERS, args)
         }
         else -> "Неизвестный инструмент: $name"
       }
