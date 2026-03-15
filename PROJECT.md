@@ -104,7 +104,7 @@ app/src/main/java/com/example/aiadventchallenge/
 | Контролируемые переходы (День 15) | Этапы задачи (Planning/Execution/Validation/Done) хранятся per-branch в agent_branches (миграция 7→8). /start_task запускает цикл, /stop_task останавливает. /confirm, /reject, /reset_planning работают без подключённой задачи. Промпт агента: блок состояния этапа отдельно от taskMemory. |
 | Тест превышения контекста | Кнопка «Превысить контекст» в настройках агента (чекбокс «Показать кнопку…»); по умолчанию скрыта; `AgentViewModel.sendContextOverflowTest()` |
 | MCP погода (День 16) | Команды `/tools` и `/weather Город` в чате агента; сервер `https://jiri-spilka--weather-mcp-server.apify.actor/mcp`; токен в `secret.properties` → `APIFY_API_KEY`; клиент `data/mcp/McpWeatherClient`, Kotlin MCP SDK + Ktor (только для MCP). |
-| Свой MCP-сервер (День 17) | Модуль `mcp-server/` (Ktor + MCP Kotlin SDK), инструмент `mock_echo`; команда `/mock Текст` в чате агента; URL в `secret.properties` → `MCP_CUSTOM_SERVER_URL`; клиент `data/mcp/McpCustomClient`; развёртывание — [mcp-server/DEPLOY.md](mcp-server/DEPLOY.md). |
+| Свой MCP-сервер (День 17) | Модуль `mcp-server/` (Ktor + MCP Kotlin SDK), инструмент `mock_echo`; команда `/mock Текст` в чате агента; URL в `secret.properties` → `MCP_CUSTOM_SERVER_URL`; клиент `data/mcp/McpCustomClient`; развёртывание — [mcp-server/DEPLOY.md](mcp-server/DEPLOY.md). При заданном URL модель сама вызывает mock_echo и get_current_weather по обычному запросу (tools в API, цикл в SimpleAgent, до 5 раундов); статический список tools — `data/AgentTools.kt`, один round-trip — `ChatRepository.sendOneCompletion`. |
 | Логи запросов/ответов | Logcat, тег `OpenAI` |
 
 ## Сборка и запуск
