@@ -14,3 +14,7 @@
 .cxx
 local.properties
 secret.properties
+
+# Day 21: generated embedding index (built via Gradle + Ollama)
+**/doc_index.sqlite
+doc-index/build/

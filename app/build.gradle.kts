@@ -1,3 +1,4 @@
+import org.gradle.api.tasks.Copy
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.util.Properties
 
@@ -7,6 +8,8 @@ plugins {
   alias(libs.plugins.kotlin.compose)
   alias(libs.plugins.ksp)
 }
+
+val docIndexAssetsDir = layout.buildDirectory.dir("generated/docIndexAssets")
 
 android {
   namespace = "com.example.aiadventchallenge"
@@ -58,6 +61,11 @@ android {
       jvmTarget.set(JvmTarget.JVM_11)
     }
   }
+  sourceSets {
+    getByName("main") {
+      assets.srcDir(docIndexAssetsDir)
+    }
+  }
   packaging {
     resources {
       // Избегаем конфликтов Java-ресурсов (OkHttp logging-interceptor vs jspecify)
@@ -100,4 +108,21 @@ dependencies {
   androidTestImplementation(libs.androidx.ui.test.junit4)
   debugImplementation(libs.androidx.ui.tooling)
   debugImplementation(libs.androidx.ui.test.manifest)
+}
+
+val docIndexSqlite = rootProject.project(":doc-index").layout.buildDirectory.file("doc_index.sqlite")
+
+val prepareDocIndexAssets by tasks.registering(Copy::class) {
+  description = "Build doc index via Ollama and copy doc_index.sqlite into generated assets."
+  group = "doc index"
+  from(docIndexSqlite)
+  into(docIndexAssetsDir)
+  rename { "doc_index.sqlite" }
+  dependsOn(":doc-index:buildDocIndex")
+}
+
+afterEvaluate {
+  tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }.configureEach {
+    dependsOn(prepareDocIndexAssets)
+  }
 }

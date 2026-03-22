@@ -22,3 +22,4 @@ dependencyResolutionManagement {
 rootProject.name = "AI Advent Challenge"
 include(":app")
 include(":mcp-server")
+include(":doc-index")
