@@ -10,10 +10,12 @@ import kotlinx.coroutines.withContext
 class RagContextBuilder(
   private val context: Context,
   private val embeddingClient: OllamaEmbeddingClient,
-  /** Top hits per chunking strategy before merge (STRUCTURE + FIXED_WINDOW). */
-  private val topKPerStrategy: Int = 6,
-  /** Max chunks after merge (dedupe by chunk id, best score wins). */
-  private val maxChunksAfterMerge: Int = 10,
+  /** Top hits per strategy before merge (wider pool for re-ranking). */
+  private val topKPerStrategy: Int = 15,
+  /** Max unique chunks after merge, before lexical re-rank. */
+  private val maxMergedCandidates: Int = 45,
+  /** Chunks passed to the LLM after re-rank. */
+  private val finalChunkCount: Int = 10,
 ) {
 
   suspend fun buildContext(userQuery: String): Result<String> = withContext(Dispatchers.IO) {
@@ -27,22 +29,28 @@ class RagContextBuilder(
       index = DocEmbeddingIndex.openFromAssets(context)
       Log.d(
         LOG_TAG,
-        "buildContext: queryChars=${query.length} topKPerStrategy=$topKPerStrategy maxMerged=$maxChunksAfterMerge (STRUCTURE+FIXED_WINDOW)",
+        "buildContext: queryChars=${query.length} topKPerStrategy=$topKPerStrategy mergeCap=$maxMergedCandidates final=$finalChunkCount (STRUCTURE+FIXED_WINDOW + rerank)",
       )
-      val vector = embeddingClient.embed(query)
+      val embedInput = RagRetrievalEnhancement.embedPromptForSearch(query)
+      if (embedInput != query) {
+        Log.d(LOG_TAG, "buildContext: embedding input uses lexical bridge (Ollama only, not sent to ChatGPT)")
+      }
+      val vector = embeddingClient.embed(embedInput)
       Log.d(LOG_TAG, "buildContext: queryEmbeddingDim=${vector.size}")
       val structHits = index.search(vector, ChunkingStrategy.STRUCTURE, topKPerStrategy)
       val fixedHits = index.search(vector, ChunkingStrategy.FIXED_WINDOW, topKPerStrategy)
       Log.d(LOG_TAG, "buildContext: rawHits structure=${structHits.size} fixedWindow=${fixedHits.size}")
-      val hits =
-        RagChunkMerge.mergeByBestScorePerId(structHits + fixedHits, maxChunksAfterMerge)
+      val merged =
+        RagChunkMerge.mergeByBestScorePerId(structHits + fixedHits, maxMergedCandidates)
+      Log.d(LOG_TAG, "buildContext: mergedUnique=${merged.size}")
+      val hits = RagRetrievalEnhancement.rerankChunks(query, merged, finalChunkCount)
       hits.forEachIndexed { i, chunk ->
         val textPreview = chunk.text.replace('\n', ' ').take(LOG_CHUNK_TEXT_PREVIEW).let { t ->
           if (chunk.text.length > LOG_CHUNK_TEXT_PREVIEW) "$t…" else t
         }
         Log.d(
           LOG_TAG,
-          "hit[$i] score=${"%.4f".format(chunk.score)} file=${chunk.titleFile} section=${chunk.section ?: "—"} id=${chunk.id} textPreview=$textPreview",
+          "hit[$i] ${RagRetrievalEnhancement.formatScoreForLog(query, chunk)} file=${chunk.titleFile} section=${chunk.section ?: "—"} id=${chunk.id} textPreview=$textPreview",
         )
       }
       if (hits.isEmpty()) {
