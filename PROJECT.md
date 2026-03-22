@@ -41,7 +41,8 @@ app/src/main/java/com/example/aiadventchallenge/
 │   │   ├── AgentUserProfileDao.kt      # getAll, getById, insert, update, deleteById
 │   │   ├── AppDatabase.kt          # Room Database, version 8, миграции 1→2 … 7→8
 │   │   ├── AgentDialogStorage.kt   # load, save, …; getBranchTaskState, updateBranchTaskState, clearBranchTaskState; профили, long-term, задачи, saveLoadedTaskIdForBranch
-│   │   └── AgentPreferences.kt      # DataStore: context_strategy, last_n_messages, active_profile_id
+│   │   └── AgentPreferences.kt      # DataStore: context_strategy, last_n_messages, active_profile_id, rag_enabled
+│   ├── rag/                     # RAG (День 22): OllamaEmbeddingClient, RagContextBuilder, RagMarkdownFormatter, OllamaHostResolver
 │   ├── ChatRepository.kt        # sendMessage, extractFactsFromText, extractOrUpdateFacts (Sticky Facts), summarizeDialog, runWithModel, compareModelResponses
 │   ├── ModelRunResult.kt        # Результат одного запроса к модели (время, токены, стоимость)
 │   └── openai/
@@ -49,10 +50,10 @@ app/src/main/java/com/example/aiadventchallenge/
 │       └── OpenAiDto.kt         # Request/Response DTO, MessageContentDeserializer
 └── ui/
     ├── agent/
-    │   ├── AgentScreen.kt       # Чат: стратегия, блок Facts, вкладки веток; Настройки (профиль пользователя, память, стратегия, N); диалог очистки, long-tap; LazyColumn, ввод, токены
-    │   ├── AgentUiState.kt      # messages, request, profiles, activeProfileId, profileEditor*, contextStrategy, branches, facts, longTermMemory, taskMemories, loadedTaskId, …
-    │   ├── AgentViewModel.kt    # process(…, userProfile); профили (loadProfiles, setActiveProfile, addProfile, openProfileEditor, saveProfileEditor, deleteProfile); команды и память
-    │   └── AgentViewModelFactory.kt  # AgentDialogStorage(7 DAO), ChatRepository, AgentPreferences, AgentViewModel
+    │   ├── AgentScreen.kt       # Чат: стратегия, блок Facts, вкладки веток; Настройки (профиль, память, стратегия, N, RAG, инварианты); диалог очистки, long-tap; LazyColumn, ввод, токены
+    │   ├── AgentUiState.kt      # messages, request, profiles, activeProfileId, profileEditor*, contextStrategy, branches, facts, longTermMemory, taskMemories, loadedTaskId, ragEnabled, …
+    │   ├── AgentViewModel.kt    # process(…, userProfile, ragContext); RagContextBuilder при ragEnabled; профили, команды, память
+    │   └── AgentViewModelFactory.kt  # AgentDialogStorage(7 DAO), ChatRepository, AgentPreferences, RagContextBuilder?, AgentViewModel
     ├── components/
     │   └── LoadingOverlay.kt    # Полноэкранный оверлей с лоудером (переиспользуемый)
     ├── theme/                   # Цвета, типографика, тема
@@ -83,6 +84,7 @@ app/src/main/java/com/example/aiadventchallenge/
 | API-ключ OpenAI | `secret.properties` (не в репозитории), читается в `app/build.gradle.kts` → `BuildConfig.OPENAI_API_KEY` |
 | Токен Apify (MCP погода) | `secret.properties` → `BuildConfig.APIFY_API_KEY`; используется в `data/mcp/McpWeatherClient` для доступа к Weather MCP Server |
 | URL своего MCP-сервера (День 17) | `secret.properties` → `BuildConfig.MCP_CUSTOM_SERVER_URL` (полный URL до `/mcp`); используется в `data/mcp/McpCustomClient` |
+| Ollama для RAG агента (День 22) | `secret.properties` → `BuildConfig.OLLAMA_HOST` (базовый URL Ollama, напр. `http://10.0.2.2:11434` на эмуляторе); `data/rag/RagContextBuilder` + переключатель в настройках агента |
 | Модель по умолчанию | `OpenAiDto.kt` → `ChatCompletionRequest.model` (сейчас `gpt-4.1`) |
 | Лимит токенов, stop sequence | `ChatRepository.kt` → `MAX_TOKENS`, `STOP_SEQUENCE`; передаются из ViewModel |
 | Параметры запроса (max_tokens, stop) | `ChatRepository.sendMessage()` формирует `ChatCompletionRequest` |
@@ -96,7 +98,7 @@ app/src/main/java/com/example/aiadventchallenge/
 | Сохранение диалога агента (Room) | `data/agent/` (AgentMessageEntity, AgentSummaryEntity, оба DAO, AppDatabase v2 с миграцией, AgentDialogStorage); таблицы `agent_messages`, `agent_summaries` |
 | Сжатие контекста агента (День 9) | Summaries блоков по 10 сообщений + последние N сообщений в промпте; настройки в DataStore; ChatRepository.summarizeDialog |
 | Стратегии контекста (День 10) | Четыре стратегии (русские названия): Sliding Window, Sticky Facts, Branching, Summary. DataStore: context_strategy, last_n_messages. Имя ветки — в диалоге при «Создать ветку». Room: agent_facts, agent_branches, branchId в messages. Bottom Sheet «Настройки агента». ChatRepository.extractOrUpdateFacts |
-| Сценарий сообщений для теста стратегий агента | [docs/AGENT_TEST_SCENARIO.md](docs/AGENT_TEST_SCENARIO.md): таблица из 13 сообщений и подсказки по проверке каждой стратегии |
+| Сценарий сообщений для теста стратегий агента и RAG | [docs/AGENT_TEST_SCENARIO.md](docs/AGENT_TEST_SCENARIO.md): таблица из 13 сообщений (стратегии контекста), сценарии задач/MCP, **День 22** — 10 вопросов для сравнения ответов с/без RAG |
 | Модель памяти агента (День 11) | Три слоя: память диалога (сессия), память задачи (agent_task_memories), долговременная (agent_long_term_memory). [docs/PLAN_DAY_11_MEMORY.md](docs/PLAN_DAY_11_MEMORY.md). Настройки агента: секции памяти; команды /add_long_term, /add_task_memory, /help; long-tap по сообщению. ChatRepository.extractFactsFromText. Подключённая задача хранится по ветке (agent_branches.loadedTaskId, миграция 4→5), восстанавливается при загрузке и смене ветки. |
 | Профили пользователя агента (День 12) | AgentPreferences (DataStore): context_strategy, last_n_messages, active_profile_id. Room: agent_user_profiles (AgentUserProfileEntity, AgentUserProfileDao), миграция 5→6. AgentDialogStorage: getAllProfiles, getProfileContent, saveProfile, deleteProfile. ChatRepository.sendMessage(systemMessage); SimpleAgent.process(..., userProfile) — блок в user-промпте и расширенный system message. В настройках агента секция «Профиль пользователя» первой: выбор, добавление, редактирование, удаление. |
 | Состояние задачи агента (День 13→15) | domain/agent/TaskStage.kt (enum, TaskState); с Дня 15 — этапы хранятся per-branch в agent_branches (stage, currentStep, isPaused, миграция 7→8); Storage getBranchTaskState, updateBranchTaskState, clearBranchTaskState; SimpleAgent.process(..., taskState); ViewModel: loadedTaskState, /start_task, /stop_task, onEnterScreen/onLeaveScreen, confirmTaskResult/rejectWithUserComment, executeCommand; кнопка «Команды»; пауза при выходе с экрана. |
@@ -112,7 +114,7 @@ app/src/main/java/com/example/aiadventchallenge/
 ## Сборка и запуск
 
 - Сборка: `./gradlew assembleDebug` или Android Studio → Build → Make Project (**для Дня 21** перед этим должен быть доступен [Ollama](https://ollama.com) с моделью `nomic-embed-text`, иначе задача индексации завершится ошибкой — см. [doc-index/README.md](doc-index/README.md))
-- Ключи: скопировать `secret.properties.example` → `secret.properties`, подставить `OPENAI_API_KEY`, при необходимости `APIFY_API_KEY` (MCP погода) и `MCP_CUSTOM_SERVER_URL` (свой MCP, День 17)
+- Ключи: скопировать `secret.properties.example` → `secret.properties`, подставить `OPENAI_API_KEY`, при необходимости `APIFY_API_KEY` (MCP погода), `MCP_CUSTOM_SERVER_URL` (свой MCP, День 17) и `OLLAMA_HOST` (RAG в агенте, День 22)
 - Подробно: [README.md](README.md)#установка-и-настройка
 
 ## Ветки
@@ -136,3 +138,4 @@ app/src/main/java/com/example/aiadventchallenge/
 - `challenge_day_17` — свой MCP-сервер (модуль mcp-server, mock_echo); команда /mock; BuildConfig.MCP_CUSTOM_SERVER_URL; McpCustomClient
 - `challenge_day_18` — напоминалки: MCP register_reminder/get_reminders (SQLite), константы инструментов (AgentToolConstants), schedule_reminder/get_reminders в агенте, AlarmManager + уведомления (AppReminderScheduler, ReminderReceiver)
 - `challenge_day_21` — индексация документов: модуль `doc-index` (chunking ×2, Ollama embeddings, SQLite), `prepareDocIndexAssets` → assets APK, `data/index` для top-k по косинусу
+- `challenge_day_22` — RAG в агенте: эмбеддинг вопроса через Ollama, поиск по `doc_index.sqlite`, вставка фрагментов в промпт; `OLLAMA_HOST`, `data/rag/`, переключатель в настройках агента

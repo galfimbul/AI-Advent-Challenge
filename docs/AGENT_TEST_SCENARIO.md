@@ -204,3 +204,36 @@
 - Ответ погоды содержит температуру, описание, ветер, влажность (формат зависит от сервера).
 - Команды и ответы MCP сохраняются в истории диалога и отображаются как обычные сообщения.
 
+---
+
+# День 22: RAG — первый запрос с локальным индексом
+
+Проверка опционального RAG: эмбеддинг вопроса через Ollama, поиск по `doc_index.sqlite` (чанки **STRUCTURE**), подмешивание фрагментов в промпт агента.
+
+## Подготовка
+
+- В `secret.properties` задан `OLLAMA_HOST` (на эмуляторе часто `http://10.0.2.2:11434`), на машине запущен Ollama с моделью `nomic-embed-text`.
+- Собранный индекс попал в APK (`prepareDocIndexAssets` / `doc_index.sqlite` в assets).
+- Открыть экран агента → «Настройки» → блок «Локальный индекс (RAG)».
+
+## Как сравнивать ответы
+
+1. Выключить «Использовать RAG», задать вопрос из таблицы ниже, дождаться ответа.
+2. Включить «Использовать RAG», отправить **тот же** текст запроса.
+3. С RAG ожидаются опора на фрагменты документации, упоминание имён файлов из заголовков чанков; без RAG модель может отвечать общими словами или ошибиться в деталях проекта.
+
+## Контрольные вопросы
+
+| № | Вопрос | Что ожидать в ответе (кратко) | Ожидаемые источники (из индекса) |
+|---|--------|-------------------------------|----------------------------------|
+| 1 | Где в проекте задаётся модель OpenAI по умолчанию для чата? | Указание на DTO запроса и идентификатор модели (например gpt-4.1) | `OpenAiDto.kt`, `PROJECT.md`, `ARCHITECTURE.md` |
+| 2 | Где хранится API-ключ OpenAI и как он попадает в приложение? | `secret.properties`, `BuildConfig.OPENAI_API_KEY`, не коммитить ключ | `PROJECT.md`, `app/build.gradle.kts`, `CHANGELOG.md` |
+| 3 | Какие четыре стратегии контекста есть у агента и как они называются в коде? | Перечисление enum `ContextStrategy` (SlidingWindow, StickyFacts, Branching, Summary) | `ContextStrategy.kt`, `ARCHITECTURE.md` |
+| 4 | Где описан поток данных экрана «Агент» (от UI до API)? | AgentScreen → ViewModel → SimpleAgent → ChatRepository / tools | `ARCHITECTURE.md` |
+| 5 | Для чего нужен `MCP_CUSTOM_SERVER_URL` и что даёт свой MCP в этом проекте? | URL до `/mcp`, пример `mock_echo`, вызов из агента | `PROJECT.md`, `McpCustomClient.kt`, `CHANGELOG.md` |
+| 6 | Как устроена индексация документов (День 21) на уровне модулей и артефактов? | Модуль `doc-index`, SQLite, задача `buildDocIndex`, копирование в assets | `doc-index/README.md`, `CHANGELOG.md`, `PROJECT.md` |
+| 7 | Как приложение открывает локальный индекс и ищет похожие чанки? | `DocEmbeddingIndex.openFromAssets`, косинус, параметры strategy и topK | `DocEmbeddingIndex.kt`, `ARCHITECTURE.md` |
+| 8 | Какая модель эмбеддингов используется при индексации и для RAG? | `nomic-embed-text`, API Ollama `/api/embeddings` | `doc-index/README.md`, `doc-index/.../ModelConstants.kt`, `data/rag/RagEmbeddingConstants.kt` |
+| 9 | Где в Gradle приложения подключается готовый `doc_index.sqlite` к сборке? | `prepareDocIndexAssets`, зависимость `merge*Assets` от копирования БД | `app/build.gradle.kts`, `CHANGELOG.md` |
+| 10 | Где задаются лимит токенов и stop sequence для обычного чата? | Константы в `ChatRepository`, использование в запросе | `ChatRepository.kt`, `PROJECT.md` |
+

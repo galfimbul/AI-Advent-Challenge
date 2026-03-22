@@ -228,3 +228,12 @@
 Примеры границ: **FIXED** — фрагмент около середины файла заканчивается на «…`onLeaveScreen()` выста» (обрыв посередине слова/токена). **STRUCTURE** — начало чанка может совпадать с элементом списка под заголовком (цельная строка документации).
 
 - **Ветка:** `challenge_day_21`.
+
+## День 22 (ветка `challenge_day_22`)
+
+- **RAG в агенте:** опционально перед вызовом OpenAI запрос эмбеддится через Ollama (`nomic-embed-text`, тот же API, что при индексации), выполняется top-k поиск по `doc_index.sqlite` из assets (стратегия чанков **STRUCTURE**), фрагменты вставляются в промпт / system message как «Локальный индекс (фрагменты документации)».
+- **Конфиг:** `secret.properties` → `BuildConfig.OLLAMA_HOST` (пример в `secret.properties.example`); при пустом URL и включённом RAG — тост, запрос к OpenAI не отправляется.
+- **Код:** `data/rag/` — `OllamaHostResolver`, `OllamaEmbeddingClient`, `RagMarkdownFormatter`, `RagContextBuilder`; `SimpleAgent.process(..., ragContextMarkdown)`; в ветке с tools контекст добавляется в system message.
+- **UI:** DataStore `rag_enabled`; переключатель «Использовать RAG» в настройках агента (блок «Локальный индекс (RAG)»); `AgentViewModel` вызывает `RagContextBuilder.buildContext` при отправке сообщения.
+- **Проверка вручную:** 10 контрольных вопросов и подсказки по сравнению ответов с/без RAG — [docs/AGENT_TEST_SCENARIO.md](docs/AGENT_TEST_SCENARIO.md) (раздел «День 22: RAG»).
+- **Тесты:** `RagMarkdownFormatterTest` — форматирование блока контекста без сети и SQLite.
