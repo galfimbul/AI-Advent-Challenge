@@ -35,10 +35,12 @@ class ReminderReceiver : BroadcastReceiver() {
       openIntent,
       PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
     )
+    val shortPreview = if (message.length > 50) message.take(47) + "…" else message
     val notification = NotificationCompat.Builder(context, CHANNEL_ID)
       .setSmallIcon(android.R.drawable.ic_dialog_info)
-      .setContentTitle(context.getString(R.string.app_name))
-      .setContentText(message)
+      .setContentTitle(context.getString(R.string.reminder_channel_name))
+      .setContentText(shortPreview)
+      .setStyle(NotificationCompat.BigTextStyle().bigText(message))
       .setContentIntent(pendingOpen)
       .setAutoCancel(true)
       .setPriority(NotificationCompat.PRIORITY_DEFAULT)
