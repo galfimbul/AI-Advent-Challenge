@@ -241,3 +241,10 @@
 ### Корпус индекса (уточнение)
 
 - **`CorpusScanner`:** в индекс дополнительно включены `doc-index/**/*.md`, `doc-index/src/main/kotlin/**/*.kt`, `app/build.gradle.kts`, `secret.properties.example`, чтобы фрагменты совпадали с «ожидаемыми источниками» в сценарии Дня 22 и не терялись ответы про `nomic-embed-text`, Gradle и ключи (раньше не индексировались `doc-index/README.md` и `ModelConstants.kt`).
+
+### Итерация: recall RAG и STRUCTURE chunking
+
+- **`RagRetrievalEnhancement`:** к запросу эмбеддинга (только для поиска) и к лексическому rerank подмешиваются отдельные подсказки для вопросов про **стратегии контекста агента** (`ContextStrategy`) и про **поток данных экрана «Агент»** (UI → API), в дополнение к теме индексации/RAG/эмбеддингов. Юнит-тесты расширены в `RagRetrievalEnhancementTest`.
+- **`StructureChunker` / `ModelConstants`:** STRUCTURE — заголовки Markdown **`#`…`######`**; длинные секции сначала по **абзацам** (`\n\n`), затем при необходимости окна 1200/200; в начале `TextChunk.text` — **строка с названием раздела** для лучшего эмбеддинга; лимит тела секции уменьшен на `STRUCTURE_HEADING_LINE_RESERVE`. В `index_meta` **`schema_version` = `2`** — нужна пересборка `:doc-index:buildDocIndex` и полная сборка приложения, чтобы в APK попала новая БД.
+- **`ARCHITECTURE.md`:** в разделе «Экран «Агент»» добавлен явный абзац, где описан поток **от UI до вызова OpenAI API** и цепочка компонентов (см. файл).
+- Актуальное описание стратегии **STRUCTURE** и констант chunking — в [doc-index/README.md](doc-index/README.md). Численные таблицы в блоке «День 21» выше отражают более раннюю конфигурацию; после смены нарезки пересчитывайте метрики через `./gradlew :doc-index:printDocIndexReport`.
