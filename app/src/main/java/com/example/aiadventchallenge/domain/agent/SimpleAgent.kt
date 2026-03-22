@@ -53,6 +53,9 @@ data class AgentResponse(
 
 private const val MAX_TOOL_ROUNDS = 5
 
+private const val RAG_PROMPT_INSTRUCTION =
+  "\n\nОтвечай с опорой на эти фрагменты; при ссылках указывай имена файлов из заголовков."
+
 /**
  * Простой агент поверх ChatRepository:
  * принимает историю диалога и новый запрос, сам формирует промпт с контекстом,
@@ -74,7 +77,8 @@ class SimpleAgent(
     userProfile: String = "",
     invariantsText: String = "",
     reminderScheduler: ReminderScheduler? = null,
-    userTimezone: String = ""
+    userTimezone: String = "",
+    ragContextMarkdown: String? = null,
   ): Result<AgentResponse> {
     val trimmed = userRequest.trim()
     if (trimmed.isEmpty()) {
@@ -95,7 +99,8 @@ class SimpleAgent(
         invariantsText = invariantsText,
         tools = tools,
         reminderScheduler = reminderScheduler,
-        userTimezone = userTimezone
+        userTimezone = userTimezone,
+        ragContextMarkdown = ragContextMarkdown,
       )
     }
 
@@ -148,6 +153,12 @@ class SimpleAgent(
       if (contextStrategy == ContextStrategy.StickyFacts) {
         append("Учитывай блок «Факты» как источник целей, ограничений и договорённостей; не противоречь им в ответе.\n\n")
       }
+      if (!ragContextMarkdown.isNullOrBlank()) {
+        append("Локальный индекс (фрагменты документации):\n")
+        append(ragContextMarkdown)
+        append(RAG_PROMPT_INSTRUCTION)
+        append("\n\n")
+      }
       append("История диалога между пользователем и агентом:\n")
       append(historyText)
       append("\n\nНовый запрос пользователя:\n")
@@ -197,7 +208,8 @@ class SimpleAgent(
     invariantsText: String,
     tools: List<ChatTool>,
     reminderScheduler: ReminderScheduler?,
-    userTimezone: String
+    userTimezone: String,
+    ragContextMarkdown: String? = null,
   ): Result<AgentResponse> {
     val historyMessages = when (contextStrategy) {
       ContextStrategy.SlidingWindow -> dialog.messages.takeLast(lastN.coerceAtLeast(1))
@@ -212,7 +224,8 @@ class SimpleAgent(
       taskState = taskState,
       taskMemory = taskMemory,
       longTermMemory = longTermMemory,
-      includeToolsHint = true
+      includeToolsHint = true,
+      ragContextMarkdown = ragContextMarkdown,
     )
     val apiMessages = mutableListOf<ChatMessage>()
     apiMessages.add(ChatMessage.system(systemContent))
@@ -287,7 +300,8 @@ class SimpleAgent(
     taskState: TaskState?,
     taskMemory: String?,
     longTermMemory: String,
-    includeToolsHint: Boolean
+    includeToolsHint: Boolean,
+    ragContextMarkdown: String? = null,
   ): String = buildString {
     append(ChatRepository.DEFAULT_SYSTEM_MESSAGE)
     if (includeToolsHint) {
@@ -312,6 +326,11 @@ class SimpleAgent(
     if (!taskMemory.isNullOrBlank()) {
       append("\n\nПамять текущей задачи:\n")
       append(taskMemory)
+    }
+    if (!ragContextMarkdown.isNullOrBlank()) {
+      append("\n\nЛокальный индекс (фрагменты документации):\n")
+      append(ragContextMarkdown)
+      append(RAG_PROMPT_INSTRUCTION)
     }
     append("\n\nИнварианты (не нарушать):\n")
     append(if (invariantsText.isNotBlank()) invariantsText else "Ограничений нет.")

@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.aiadventchallenge.BuildConfig
 import com.example.aiadventchallenge.data.ChatRepository
+import com.example.aiadventchallenge.data.rag.RagContextBuilder
 import com.example.aiadventchallenge.data.agent.AgentPreferences
 import com.example.aiadventchallenge.data.agent.AgentDialogStorage
 import com.example.aiadventchallenge.data.agent.TaskMemoryItem
@@ -36,7 +37,8 @@ class AgentViewModel(
   private val storage: AgentDialogStorage,
   private val repository: ChatRepository,
   private val agentPreferences: AgentPreferences,
-  private val reminderScheduler: ReminderScheduler?
+  private val reminderScheduler: ReminderScheduler?,
+  private val ragContextBuilder: RagContextBuilder?,
 ) : ViewModel() {
 
   private val _uiState = MutableStateFlow(AgentUiState())
@@ -49,11 +51,13 @@ class AgentViewModel(
       try {
         val settings = agentPreferences.getSettings()
         val showOverflow = agentPreferences.getShowContextOverflowButton()
+        val ragEnabled = agentPreferences.getRagEnabled()
         _uiState.value = _uiState.value.copy(
           contextStrategy = settings.contextStrategy,
           lastN = settings.lastN,
           useCompression = settings.useCompression,
-          showContextOverflowButton = showOverflow
+          showContextOverflowButton = showOverflow,
+          ragEnabled = ragEnabled,
         )
         dialogState = storage.load(_uiState.value.currentBranchId)
         val longTerm = storage.getLongTermMemory()
@@ -155,6 +159,34 @@ class AgentViewModel(
     val userProfile = _uiState.value.activeProfileId?.let { id -> storage.getProfileContent(id) } ?: ""
     val invariantsText = _uiState.value.invariantsText
     val userTimezone = TimeZone.getDefault().id
+    val ragMarkdown: String? =
+      if (!_uiState.value.ragEnabled) {
+        null
+      } else {
+        if (BuildConfig.OLLAMA_HOST.isBlank()) {
+          _uiState.value = _uiState.value.copy(
+            isLoading = false,
+            toastMessage = "Укажите OLLAMA_HOST в secret.properties для RAG",
+          )
+          return@runAgentRequest
+        }
+        val builder = ragContextBuilder ?: run {
+          _uiState.value = _uiState.value.copy(
+            isLoading = false,
+            toastMessage = "RAG недоступен: не задан OLLAMA_HOST",
+          )
+          return@runAgentRequest
+        }
+        val result = builder.buildContext(request)
+        if (result.isFailure) {
+          _uiState.value = _uiState.value.copy(
+            isLoading = false,
+            toastMessage = result.exceptionOrNull()?.message ?: "Ошибка RAG",
+          )
+          return@runAgentRequest
+        }
+        result.getOrNull()
+      }
     agent.process(
       stateToSend,
       request,
@@ -166,7 +198,8 @@ class AgentViewModel(
       userProfile = userProfile,
       invariantsText = invariantsText,
       reminderScheduler = reminderScheduler,
-      userTimezone = userTimezone
+      userTimezone = userTimezone,
+      ragContextMarkdown = ragMarkdown,
     )
       .onSuccess { agentResponse ->
         dialogState = agentResponse.dialog
@@ -1273,6 +1306,17 @@ class AgentViewModel(
         _uiState.value = _uiState.value.copy(showContextOverflowButton = value)
       } catch (e: Exception) {
         Log.e(LOG_TAG, "Failed to set showContextOverflowButton", e)
+      }
+    }
+  }
+
+  fun setRagEnabled(value: Boolean) {
+    _uiState.value = _uiState.value.copy(ragEnabled = value)
+    viewModelScope.launch {
+      try {
+        agentPreferences.setRagEnabled(value)
+      } catch (e: Exception) {
+        Log.e(LOG_TAG, "Failed to save rag_enabled", e)
       }
     }
   }

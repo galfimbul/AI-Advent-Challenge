@@ -67,5 +67,7 @@ data class AgentUiState(
   /** Текст инвариантов (правила, которые агент не должен нарушать). Загружается из AgentPreferences. */
   val invariantsText: String = "",
   /** Идёт ли сейчас запрос к MCP (список инструментов или погода). */
-  val isMcpLoading: Boolean = false
+  val isMcpLoading: Boolean = false,
+  /** Подмешивать в промпт фрагменты из локального индекса документации (RAG, День 22). */
+  val ragEnabled: Boolean = false,
 )

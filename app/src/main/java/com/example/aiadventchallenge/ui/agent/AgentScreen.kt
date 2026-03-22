@@ -38,6 +38,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material.icons.filled.Settings
@@ -500,6 +501,8 @@ fun AgentScreen(
             onLastNSelected = viewModel::setLastN,
             showContextOverflowButton = uiState.showContextOverflowButton,
             onShowContextOverflowButtonChange = viewModel::setShowContextOverflowButton,
+            ragEnabled = uiState.ragEnabled,
+            onRagEnabledChange = viewModel::setRagEnabled,
             invariantsText = uiState.invariantsText,
             onSaveInvariants = viewModel::saveInvariants
           )
@@ -703,6 +706,8 @@ private fun AgentSettingsSheetContent(
   onLastNSelected: (Int) -> Unit,
   showContextOverflowButton: Boolean = false,
   onShowContextOverflowButtonChange: (Boolean) -> Unit = {},
+  ragEnabled: Boolean = false,
+  onRagEnabledChange: (Boolean) -> Unit = {},
   invariantsText: String = "",
   onSaveInvariants: (String) -> Unit = {}
 ) {
@@ -1028,6 +1033,34 @@ private fun AgentSettingsSheetContent(
         }
       }
     }
+    }
+
+    CollapsibleSettingsBlock(
+      title = "Локальный индекс (RAG)",
+      expanded = expandedSectionId == "rag",
+      onToggle = { expandedSectionId = if (expandedSectionId == "rag") null else "rag" }
+    ) {
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+      ) {
+        Column(modifier = Modifier.weight(1f)) {
+          Text(
+            text = "Использовать RAG",
+            style = MaterialTheme.typography.bodyLarge
+          )
+          Text(
+            text = "Нужны Ollama (nomic-embed-text) и doc_index.sqlite в сборке. URL: OLLAMA_HOST в secret.properties.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+          )
+        }
+        Switch(
+          checked = ragEnabled,
+          onCheckedChange = onRagEnabledChange
+        )
+      }
     }
 
     CollapsibleSettingsBlock(

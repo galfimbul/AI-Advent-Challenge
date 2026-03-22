@@ -22,6 +22,7 @@ private val CONTEXT_STRATEGY = stringPreferencesKey("context_strategy")
 private val ACTIVE_PROFILE_ID = longPreferencesKey("active_profile_id")
 private val SHOW_CONTEXT_OVERFLOW_BUTTON = booleanPreferencesKey("show_context_overflow_button")
 private val AGENT_INVARIANTS = stringPreferencesKey("agent_invariants")
+private val RAG_ENABLED = booleanPreferencesKey("rag_enabled")
 
 data class AgentCompressionSettings(
   val useCompression: Boolean = false,
@@ -105,5 +106,12 @@ class AgentPreferences(private val context: Context) {
 
   suspend fun setInvariantsText(value: String) {
     context.agentDataStore.edit { it[AGENT_INVARIANTS] = value }
+  }
+
+  suspend fun getRagEnabled(): Boolean =
+    context.agentDataStore.data.first()[RAG_ENABLED] ?: false
+
+  suspend fun setRagEnabled(value: Boolean) {
+    context.agentDataStore.edit { it[RAG_ENABLED] = value }
   }
 }

@@ -40,6 +40,9 @@ android {
 
     val mcpCustomUrl = props.getProperty("MCP_CUSTOM_SERVER_URL", "").trim()
     buildConfigField("String", "MCP_CUSTOM_SERVER_URL", "\"$mcpCustomUrl\"")
+
+    val ollamaHost = props.getProperty("OLLAMA_HOST", "").trim()
+    buildConfigField("String", "OLLAMA_HOST", "\"$ollamaHost\"")
   }
   buildFeatures {
     compose = true
