@@ -237,3 +237,7 @@
 - **UI:** DataStore `rag_enabled`; переключатель «Использовать RAG» в настройках агента (блок «Локальный индекс (RAG)»); `AgentViewModel` вызывает `RagContextBuilder.buildContext` при отправке сообщения.
 - **Проверка вручную:** 10 контрольных вопросов и подсказки по сравнению ответов с/без RAG — [docs/AGENT_TEST_SCENARIO.md](docs/AGENT_TEST_SCENARIO.md) (раздел «День 22: RAG»).
 - **Тесты:** `RagMarkdownFormatterTest` — форматирование блока контекста без сети и SQLite.
+
+### Корпус индекса (уточнение)
+
+- **`CorpusScanner`:** в индекс дополнительно включены `doc-index/**/*.md`, `doc-index/src/main/kotlin/**/*.kt`, `app/build.gradle.kts`, `secret.properties.example`, чтобы фрагменты совпадали с «ожидаемыми источниками» в сценарии Дня 22 и не терялись ответы про `nomic-embed-text`, Gradle и ключи (раньше не индексировались `doc-index/README.md` и `ModelConstants.kt`).

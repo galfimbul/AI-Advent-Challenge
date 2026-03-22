@@ -20,6 +20,26 @@ class CorpusScanner(private val repoRoot: File) {
         }
       }
     }
+    val docIndexDocs = File(repoRoot, "doc-index")
+    if (docIndexDocs.isDirectory) {
+      docIndexDocs.walkTopDown().forEach { f ->
+        if (f.isFile && f.extension.equals("md", ignoreCase = true)) {
+          files.add(f)
+        }
+      }
+    }
+    val appGradle = File(repoRoot, "app/build.gradle.kts")
+    if (appGradle.isFile) {
+      files.add(appGradle)
+    }
+    val docIndexKotlin = File(repoRoot, "doc-index/src/main/kotlin")
+    if (docIndexKotlin.isDirectory) {
+      docIndexKotlin.walkTopDown().forEach { f ->
+        if (f.isFile && f.extension.equals("kt", ignoreCase = true)) {
+          files.add(f)
+        }
+      }
+    }
     val kotlinRoot = File(repoRoot, "app/src/main/java")
     if (kotlinRoot.isDirectory) {
       kotlinRoot.walkTopDown().forEach { f ->
@@ -27,6 +47,10 @@ class CorpusScanner(private val repoRoot: File) {
           files.add(f)
         }
       }
+    }
+    val secretExample = File(repoRoot, "secret.properties.example")
+    if (secretExample.isFile) {
+      files.add(secretExample)
     }
     return files.sortedBy { it.invariantSeparatorsPath }.map { file ->
       val rel = relativize(file)

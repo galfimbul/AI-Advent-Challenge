@@ -61,8 +61,11 @@ curl -s http://127.0.0.1:11434/api/embeddings \
 
 ## Корпус и стратегии chunking
 
-- Markdown: все `*.md` в **корне репозитория** и все `*.md` в **`docs/`**.
-- Kotlin: все `*.kt` под **`app/src/main/java/`**.
+- Markdown: все `*.md` в **корне репозитория**, в **`docs/`** и в **`doc-index/`** (включая `doc-index/README.md`).
+- Kotlin: все `*.kt` под **`app/src/main/java/`** и под **`doc-index/src/main/kotlin/`** (константы индексатора, клиент Ollama и т.д.).
+- Дополнительно как текстовые файлы: **`app/build.gradle.kts`**, **`secret.properties.example`** (в корне) — для вопросов про BuildConfig и ключи.
+
+Чтобы ответы RAG совпадали с таблицей в [docs/AGENT_TEST_SCENARIO.md](docs/AGENT_TEST_SCENARIO.md) (День 22), эти пути должны попадать в корпус; иначе часть «ожидаемых файлов» в сценарии отсутствовала бы в `doc_index.sqlite`.
 
 Стратегии:
 
