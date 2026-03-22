@@ -4,15 +4,17 @@ import com.example.aiadventchallenge.data.index.IndexedChunk
 
 object RagMarkdownFormatter {
 
-  const val MAX_CONTEXT_CHARS = 10_000
+  const val MAX_CONTEXT_CHARS = 12_000
 
   /**
    * Builds a markdown block for the prompt from retrieved chunks (file title, optional section, body).
    */
   fun formatChunks(chunks: List<IndexedChunk>): String {
     if (chunks.isEmpty()) return ""
+    val fileList = chunks.map { it.titleFile }.distinct().sorted().joinToString(", ")
     val sb = StringBuilder()
-    var used = 0
+    sb.append("*(Файлы в этом блоке: $fileList)*\n\n")
+    var used = sb.length
     for (chunk in chunks) {
       val header = "### ${chunk.titleFile}\n"
       val sectionLine =

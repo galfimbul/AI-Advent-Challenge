@@ -10,7 +10,10 @@ import kotlinx.coroutines.withContext
 class RagContextBuilder(
   private val context: Context,
   private val embeddingClient: OllamaEmbeddingClient,
-  private val topK: Int = 5,
+  /** Top hits per chunking strategy before merge (STRUCTURE + FIXED_WINDOW). */
+  private val topKPerStrategy: Int = 6,
+  /** Max chunks after merge (dedupe by chunk id, best score wins). */
+  private val maxChunksAfterMerge: Int = 10,
 ) {
 
   suspend fun buildContext(userQuery: String): Result<String> = withContext(Dispatchers.IO) {
@@ -22,10 +25,17 @@ class RagContextBuilder(
     var index: DocEmbeddingIndex? = null
     try {
       index = DocEmbeddingIndex.openFromAssets(context)
-      Log.d(LOG_TAG, "buildContext: queryChars=${query.length} strategy=STRUCTURE topK=$topK")
+      Log.d(
+        LOG_TAG,
+        "buildContext: queryChars=${query.length} topKPerStrategy=$topKPerStrategy maxMerged=$maxChunksAfterMerge (STRUCTURE+FIXED_WINDOW)",
+      )
       val vector = embeddingClient.embed(query)
       Log.d(LOG_TAG, "buildContext: queryEmbeddingDim=${vector.size}")
-      val hits = index.search(vector, ChunkingStrategy.STRUCTURE, topK)
+      val structHits = index.search(vector, ChunkingStrategy.STRUCTURE, topKPerStrategy)
+      val fixedHits = index.search(vector, ChunkingStrategy.FIXED_WINDOW, topKPerStrategy)
+      Log.d(LOG_TAG, "buildContext: rawHits structure=${structHits.size} fixedWindow=${fixedHits.size}")
+      val hits =
+        RagChunkMerge.mergeByBestScorePerId(structHits + fixedHits, maxChunksAfterMerge)
       hits.forEachIndexed { i, chunk ->
         val textPreview = chunk.text.replace('\n', ' ').take(LOG_CHUNK_TEXT_PREVIEW).let { t ->
           if (chunk.text.length > LOG_CHUNK_TEXT_PREVIEW) "$t…" else t
@@ -40,7 +50,7 @@ class RagContextBuilder(
       }
       val md = RagMarkdownFormatter.formatChunks(hits)
       if (md.isBlank()) {
-        Log.e(LOG_TAG, "buildContext: index returned no markdown fragments (topK=$topK)")
+        Log.e(LOG_TAG, "buildContext: index returned no markdown fragments (merged=${hits.size})")
         return@withContext Result.failure(IllegalStateException("Индекс не вернул фрагментов"))
       }
       Log.d(
