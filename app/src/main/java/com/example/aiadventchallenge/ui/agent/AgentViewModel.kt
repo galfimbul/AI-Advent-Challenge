@@ -164,6 +164,7 @@ class AgentViewModel(
         null
       } else {
         if (BuildConfig.OLLAMA_HOST.isBlank()) {
+          Log.w(LOG_TAG, "RAG: OLLAMA_HOST is blank; set it in secret.properties")
           _uiState.value = _uiState.value.copy(
             isLoading = false,
             toastMessage = "Укажите OLLAMA_HOST в secret.properties для RAG",
@@ -171,6 +172,7 @@ class AgentViewModel(
           return@runAgentRequest
         }
         val builder = ragContextBuilder ?: run {
+          Log.w(LOG_TAG, "RAG: RagContextBuilder is null (OLLAMA_HOST was empty at build time?)")
           _uiState.value = _uiState.value.copy(
             isLoading = false,
             toastMessage = "RAG недоступен: не задан OLLAMA_HOST",
@@ -179,9 +181,15 @@ class AgentViewModel(
         }
         val result = builder.buildContext(request)
         if (result.isFailure) {
+          val err = result.exceptionOrNull()
+          if (err != null) {
+            Log.e(LOG_TAG, "RAG: buildContext failed: ${err.message}", err)
+          } else {
+            Log.e(LOG_TAG, "RAG: buildContext failed (no exception on Result)")
+          }
           _uiState.value = _uiState.value.copy(
             isLoading = false,
-            toastMessage = result.exceptionOrNull()?.message ?: "Ошибка RAG",
+            toastMessage = err?.message ?: "Ошибка RAG",
           )
           return@runAgentRequest
         }
