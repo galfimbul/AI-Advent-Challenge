@@ -107,10 +107,11 @@ app/src/main/java/com/example/aiadventchallenge/
 | Свой MCP-сервер (День 17) | Модуль `mcp-server/` (Ktor + MCP Kotlin SDK), инструмент `mock_echo`; команда `/mock Текст` в чате агента; URL в `secret.properties` → `MCP_CUSTOM_SERVER_URL`; клиент `data/mcp/McpCustomClient`; развёртывание — [mcp-server/DEPLOY.md](mcp-server/DEPLOY.md). При заданном URL модель сама вызывает mock_echo и get_current_weather по обычному запросу (tools в API, цикл в SimpleAgent, до 5 раундов); статический список tools — `data/AgentTools.kt`, один round-trip — `ChatRepository.sendOneCompletion`. |
 | Напоминалки (День 18) | MCP-сервер: `register_reminder`, `get_reminders`(timezone опционально — время в таймзоне пользователя), SQLite (ReminderStorage). Приложение: AgentToolConstants; schedule_reminder, get_reminders; McpCustomClient.callTool; ReminderScheduler, AppReminderScheduler (setAlarmClock + fallback), ReminderReceiver; POST_NOTIFICATIONS и SCHEDULE_EXACT_ALARM; запрос уведомлений при старте (MainActivity). Таймзона устройства передаётся в get_reminders (userTimezone в process). |
 | Логи запросов/ответов | Logcat, тег `OpenAI` |
+| Индексация документов + эмбеддинги (День 21) | Модуль [doc-index/](doc-index/) — Ollama `nomic-embed-text`, SQLite `doc_index.sqlite`; задачи `./gradlew :doc-index:buildDocIndex`, `:doc-index:printDocIndexReport`. Подробнее: [doc-index/README.md](doc-index/README.md). В приложении: чтение индекса из assets и поиск по косинусу — `data/index/` (`DocEmbeddingIndex.openFromAssets`, `ChunkingStrategy`). Задачи `merge*Assets` зависят от `prepareDocIndexAssets` → `:doc-index:buildDocIndex` (нужен запущенный Ollama); JVM unit tests Ollama не требуют. |
 
 ## Сборка и запуск
 
-- Сборка: `./gradlew assembleDebug` или Android Studio → Build → Make Project
+- Сборка: `./gradlew assembleDebug` или Android Studio → Build → Make Project (**для Дня 21** перед этим должен быть доступен [Ollama](https://ollama.com) с моделью `nomic-embed-text`, иначе задача индексации завершится ошибкой — см. [doc-index/README.md](doc-index/README.md))
 - Ключи: скопировать `secret.properties.example` → `secret.properties`, подставить `OPENAI_API_KEY`, при необходимости `APIFY_API_KEY` (MCP погода) и `MCP_CUSTOM_SERVER_URL` (свой MCP, День 17)
 - Подробно: [README.md](README.md)#установка-и-настройка
 
@@ -134,3 +135,4 @@ app/src/main/java/com/example/aiadventchallenge/
 - `challenge_day_16` — MCP: подключение к Weather MCP Server (Apify), команды /tools и /weather; Kotlin MCP SDK, Ktor (только для MCP); BuildConfig.APIFY_API_KEY
 - `challenge_day_17` — свой MCP-сервер (модуль mcp-server, mock_echo); команда /mock; BuildConfig.MCP_CUSTOM_SERVER_URL; McpCustomClient
 - `challenge_day_18` — напоминалки: MCP register_reminder/get_reminders (SQLite), константы инструментов (AgentToolConstants), schedule_reminder/get_reminders в агенте, AlarmManager + уведомления (AppReminderScheduler, ReminderReceiver)
+- `challenge_day_21` — индексация документов: модуль `doc-index` (chunking ×2, Ollama embeddings, SQLite), `prepareDocIndexAssets` → assets APK, `data/index` для top-k по косинусу

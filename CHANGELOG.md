@@ -193,3 +193,38 @@
 - **Таймзона для списка напоминаний:** при вызове get_reminders приложение передаёт таймзону устройства (`TimeZone.getDefault().id`); MCP-сервер принимает опциональный параметр `timezone` (IANA) и возвращает время в этой таймзоне (formatScheduledAt). SimpleAgent.process(..., userTimezone) передаёт таймзону в runToolCall.
 - **Интеграция:** AgentViewModelFactory создаёт AppReminderScheduler, передаёт в AgentViewModel и в `SimpleAgent.process(..., reminderScheduler, userTimezone)`. При вызове schedule_reminder агент сначала вызывает MCP register_reminder, затем reminderScheduler.scheduleReminder(inMinutes, message).
 - **Ветка:** `challenge_day_18`.
+
+## День 21 (индексация документов — chunking, эмбеддинги Ollama, SQLite)
+
+- **Модуль `doc-index`:** JVM (Kotlin 17 toolchain), зависимости OkHttp, Gson, `sqlite-jdbc`. Сканер корпуса: все `*.md` в корне репозитория и в `docs/`, все `*.kt` под `app/src/main/java/`. Две стратегии нарезки: **FIXED_WINDOW** (окно 1200 UTF-16 code units, overlap 200, `section` вида `part:i/n`) и **STRUCTURE** (Markdown по заголовкам `#`–`###`, преамбула `(preamble)`; Kotlin по файлу; фрагменты длиннее 4000 символов дополнительно режутся окнами 1200/200). Перед вызовом Ollama длинные чанки дополнительно режутся до `MAX_EMBEDDING_INPUT_CHARS` (2048 UTF-16, overlap 256), чтобы не превышать токен-лимит `nomic-embed-text` (HTTP 500 «input length exceeds the context length»); при разбиении создаются строки с id `…__emb_N` и пометкой в `section`. Эмбеддинги: Ollama `POST /api/embeddings`, модель **`nomic-embed-text`**, базовый URL из `OLLAMA_HOST` или `--ollama-base` (по умолчанию `http://127.0.0.1:11434`). SQLite: таблицы `chunks` и `index_meta` (в т.ч. `max_embedding_input_chars`, `embedding_input_overlap`).
+- **Gradle:** `:doc-index:buildDocIndex` (JavaExec), `:doc-index:printDocIndexReport` — сводка и примеры чанков в консоль и `doc-index/build/reports/doc_index_report.md`. В `:app` задача `prepareDocIndexAssets` (Copy) зависит от `buildDocIndex`, а задачи `merge*Assets` зависят от `prepareDocIndexAssets` (так что для JVM unit tests Ollama не нужен); ассеты подключаются через `generated/docIndexAssets` → в APK попадает `doc_index.sqlite`.
+- **Приложение:** пакет `data/index` — `DocEmbeddingIndex.openFromAssets`, копирование БД из assets во внутреннее хранилище при изменении размера файла, `search(queryEmbedding, ChunkingStrategy, topK)` с полным сканом и косинусным сходством; `VectorMath`, `EmbeddingVector`. Юнит-тесты: `VectorMathTest` (косинус, разбор BLOB).
+- **Документация:** [doc-index/README.md](doc-index/README.md) — установка/запуск Ollama, переменные, curl, типичные ошибки; [PROJECT.md](PROJECT.md) — строка в таблице «Где что искать» и примечание в «Сборка и запуск».
+- **Игнор Git:** `**/doc_index.sqlite`, `doc-index/build/reports/` (сгенерированные артефакты не коммитятся).
+
+### Сравнение стратегий chunking (на примере `ARCHITECTURE.md`)
+
+Точные числа по текущему корпусу: `./gradlew :doc-index:printDocIndexReport` (после успешной индексации).
+
+| Критерий | FIXED_WINDOW | STRUCTURE |
+|----------|--------------|-----------|
+| Границы | Каждые ~1000 шагов по тексту (1200 символов, перекрытие 200); граница может пройти посередине раздела или заголовка. | По смысловым секциям Markdown (заголовки); внутри одной секции текст цельнее; при перегрузе секции (>4000) — те же окна, что у fixed, но с меткой секции. |
+| Метаданные `section` | `part:i/n` по файлу. | Текст заголовка или `(preamble)`; при поднарезке — `Заголовок · part k/m`. |
+| Риск «обрыва» мысли | Выше на границе окна без учёта структуры. | Ниже между секциями; возможен обрыв внутри очень длинной секции после 4000 символов. |
+
+Примеры границ (иллюстративно): у **FIXED_WINDOW** конец чанка может обрывать маркированный список или строку кода посередине; у **STRUCTURE** граница чаще совпадает с заголовком `## …`, а тело секции остаётся в одном чанке, пока не превысит порог 4000 символов.
+
+#### Числа только для `ARCHITECTURE.md` (chunking без эмбеддингов)
+
+Подсчёт по тем же параметрам, что в коде (`FIXED_WINDOW` 1200/200, `STRUCTURE` по заголовкам + подокна 1200/200 для секций >4000). Длины — в символах Unicode (для преимущественно BMP совпадает с `String.length` в Kotlin).
+
+| Метрика | FIXED_WINDOW | STRUCTURE |
+|--------|--------------|-----------|
+| Число чанков | 14 | 18 |
+| Min / median / max длина текста | 477 / 1200 / 1200 | 147 / 1200 / 1200 |
+| Средняя длина | ~1148 | ~837 |
+| Доля чанков, где последний непробельный символ **не** `.`, `?`, `!`, `)`, `]`, `"`, `'` (грубый «обрыв») | ~0,93 | ~0,56 |
+
+Примеры границ: **FIXED** — фрагмент около середины файла заканчивается на «…`onLeaveScreen()` выста» (обрыв посередине слова/токена). **STRUCTURE** — начало чанка может совпадать с элементом списка под заголовком (цельная строка документации).
+
+- **Ветка:** `challenge_day_21`.

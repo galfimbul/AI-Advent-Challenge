@@ -68,6 +68,12 @@
 - **Навигация:** маршрут `agent`; на главном экране блок «Агент» с кнопкой «Начать диалог»; при загрузке — LoadingOverlay.
 - **Сценарий для ручной проверки стратегий:** см. [docs/AGENT_TEST_SCENARIO.md](docs/AGENT_TEST_SCENARIO.md).
 
+## Локальный индекс документов (День 21)
+
+- **Сборка индекса (JVM):** модуль `doc-index/` — нарезка корпуса репозитория (две стратегии), эмбеддинги через Ollama `nomic-embed-text`, SQLite `doc_index.sqlite`. Подробности и команды Gradle — [doc-index/README.md](doc-index/README.md).
+- **APK:** задача `prepareDocIndexAssets` в `app/build.gradle.kts` зависит от `:doc-index:buildDocIndex` и выполняется перед `merge*Assets`; БД попадает в assets из `app/build/generated/docIndexAssets/` (нужен запущенный Ollama при сборке).
+- **Чтение и поиск:** `data/index/` — `DocEmbeddingIndex.openFromAssets(context)` копирует БД из assets во внутреннее хранилище при изменении размера файла; `search(queryEmbedding, ChunkingStrategy, topK)` — полный скан и косинусное сходство (для последующего RAG в агенте эмбеддинг запроса должен быть в том же пространстве, что и чанки).
+
 ## Главный экран (Home)
 
 - **Старт:** startDestination = `home`; HomeScreen — изображение (drawable) на тему AI/робота, название «Ai Advent Challenge With Love», раскрывающиеся секции (аккордеон).
