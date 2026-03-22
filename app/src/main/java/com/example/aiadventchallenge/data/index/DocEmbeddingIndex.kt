@@ -75,15 +75,29 @@ class DocEmbeddingIndex(
     private fun copyAssetDbIfNeeded(context: Context): File {
       val out = File(context.filesDir, DocIndexAssetConstants.ASSET_FILE_NAME)
       val name = DocIndexAssetConstants.ASSET_FILE_NAME
-      context.assets.openFd(name).use { afd ->
-        val assetLen = afd.length
+      val assetLen =
+        try {
+          context.assets.openFd(name).use { it.length }
+        } catch (_: Exception) {
+          -1L
+        }
+      if (assetLen >= 0L) {
         if (!out.exists() || out.length() != assetLen) {
-          context.assets.open(name).use { input ->
-            FileOutputStream(out).use { output -> input.copyTo(output) }
-          }
+          copyAssetStreamToFile(context, name, out)
+        }
+      } else {
+        // Ассет в APK сжат — длина через openFd недоступна; копируем потоком при отсутствии/пустом файле.
+        if (!out.exists() || out.length() == 0L) {
+          copyAssetStreamToFile(context, name, out)
         }
       }
       return out
+    }
+
+    private fun copyAssetStreamToFile(context: Context, assetName: String, out: File) {
+      context.assets.open(assetName).use { input ->
+        FileOutputStream(out).use { output -> input.copyTo(output) }
+      }
     }
 
     private fun readEmbeddingDim(db: SQLiteDatabase): Int {

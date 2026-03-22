@@ -44,6 +44,11 @@ android {
     val ollamaHost = props.getProperty("OLLAMA_HOST", "").trim()
     buildConfigField("String", "OLLAMA_HOST", "\"$ollamaHost\"")
   }
+  androidResources {
+    // SQLite в assets должен остаться несжатым: иначе openFd() падает («probably compressed»).
+    noCompress += "sqlite"
+  }
+
   buildFeatures {
     compose = true
     buildConfig = true
